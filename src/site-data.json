@@ -1,0 +1,357 @@
+{
+  "hero": {
+    "config": {
+      "layout": {
+        "height": "custom",
+        "maxWidth": 1200,
+        "fullWidth": true,
+        "contentAlign": "center",
+        "customHeight": {
+          "mobile": 400,
+          "tablet": 500,
+          "desktop": 600
+        },
+        "verticalAlign": "middle"
+      },
+      "slider": {
+        "loop": true,
+        "enabled": false,
+        "autoplay": true,
+        "keyboardNav": true,
+        "pauseOnHover": true,
+        "autoplaySpeed": 5000,
+        "swipeOnMobile": true,
+        "transitionSpeed": 600
+      },
+      "slides": [
+        {
+          "id": "slide-1792292608093-k4jzmv1k2",
+          "title": "Awake Camps & Youth Conferences 2026",
+          "subtitle": "Empowering Christian youth across America to live boldly for Christ. Choose your regional camp and reserve your place today.",
+          "description": "",
+          "overlayColor": "#000000",
+          "primaryButton": {
+            "link": "#contact",
+            "text": "Register Now"
+          },
+          "overlayOpacity": 55,
+          "backgroundImage": "https://projects.alphacrtv.com/icpf/wp-content/uploads/2026/02/DSC02624-Enhanced-NR-1-scaled.png",
+          "secondaryButton": {
+            "link": "#about",
+            "text": "Visit icpfusa.org"
+          }
+        }
+      ],
+      "animation": {
+        "textAnimation": "fade",
+        "transitionType": "fade",
+        "textAnimationDelay": 200
+      },
+      "navigation": {
+        "showDots": true,
+        "showArrows": true,
+        "dotPosition": "bottom-center",
+        "arrowPosition": "inside"
+      },
+      "responsive": {
+        "heights": {
+          "mobile": 400,
+          "tablet": 500,
+          "desktop": 600
+        },
+        "fontSizes": {
+          "mobile": {
+            "title": "2rem",
+            "subtitle": "1rem",
+            "description": "0.875rem"
+          },
+          "tablet": {
+            "title": "3rem",
+            "subtitle": "1.25rem",
+            "description": "1rem"
+          },
+          "desktop": {
+            "title": "4rem",
+            "subtitle": "1.5rem",
+            "description": "1.125rem"
+          }
+        },
+        "hideTextOnMobile": false
+      },
+      "performance": {
+        "lazyLoadImages": true,
+        "pauseWhenHidden": true,
+        "preloadFirstSlide": true
+      }
+    },
+    "heading": "Awake Camps & Youth Conferences 2026",
+    "heroImage": "https://projects.alphacrtv.com/icpf/wp-content/uploads/2026/02/DSC02624-Enhanced-NR-1-scaled.png",
+    "heroImages": [
+      "https://projects.alphacrtv.com/icpf/wp-content/uploads/2026/02/DSC02624-Enhanced-NR-1-scaled.png"
+    ],
+    "primaryCTA": "Register Now",
+    "subheading": "Empowering Christian youth across America to live boldly for Christ. Choose your regional camp and reserve your place today.",
+    "imageOverlay": 55,
+    "secondaryCTA": "Visit icpfusa.org"
+  },
+  "pages": [],
+  "footer": {
+    "style": {
+      "showLogo": true,
+      "background": "dark",
+      "showDividers": true
+    },
+    "copyright": "© ICPF USA. All rights reserved.",
+    "linkGroups": [
+      {
+        "links": [
+          {
+            "href": "/events/icpf-a57643",
+            "label": "All Events"
+          },
+          {
+            "href": "/contact",
+            "label": "Contact"
+          }
+        ],
+        "title": "Events"
+      },
+      {
+        "links": [
+          {
+            "href": "https://icpfusa.org/",
+            "label": "Main Website"
+          },
+          {
+            "href": "https://icpfusa.org/about/",
+            "label": "About ICPF"
+          },
+          {
+            "href": "https://icpfusa.org/give/",
+            "label": "Give"
+          },
+          {
+            "href": "https://www.facebook.com/ICPFUSA",
+            "label": "Facebook"
+          },
+          {
+            "href": "https://www.instagram.com/icpf.usa",
+            "label": "Instagram"
+          }
+        ],
+        "title": "ICPF USA"
+      }
+    ],
+    "companyName": "ICPF USA",
+    "contactInfo": {
+      "email": "icpfusa@gmail.com"
+    },
+    "description": "Igniting Christian youth across America to live boldly for Christ."
+  },
+  "header": {
+    "logo": "https://foemfjmfrulilubshnwn.supabase.co/storage/v1/object/public/site-images/a576432d-ca97-4d2f-9cc0-16428bb50e5d/logo_1792612181499_m3034ac6.jpg?v=1792612182219",
+    "topBar": {
+      "height": "compact",
+      "enabled": true,
+      "textColor": "#E4E4D5",
+      "dismissible": false,
+      "leftContent": "custom_text",
+      "socialLinks": [
+        {
+          "url": "https://www.facebook.com/ICPFUSA",
+          "platform": "facebook"
+        },
+        {
+          "url": "https://www.instagram.com/icpf.usa",
+          "platform": "instagram"
+        }
+      ],
+      "borderBottom": false,
+      "rightContent": "custom_text",
+      "showOnMobile": false,
+      "customLeftLink": "https://icpfusa.org/",
+      "customLeftText": "← Back to icpfusa.org",
+      "backgroundColor": "#000F10",
+      "customRightLink": "/events/icpf-a57643",
+      "customRightText": "Registration is open"
+    },
+    "navItems": [
+      {
+        "href": "/events/icpf-a57643/ICPF Oklahoma AWAKE Camp",
+        "type": "events",
+        "label": "Registration"
+      }
+    ],
+    "settings": {
+      "height": "compact",
+      "layout": "horizontal",
+      "shadow": "md",
+      "ctaLink": "/events/icpf-a57643",
+      "ctaText": "Register",
+      "ctaStyle": "outline",
+      "fontSize": "sm",
+      "isSticky": false,
+      "alignment": "right",
+      "fullWidth": false,
+      "linkStyle": "uppercase",
+      "textColor": "#000000",
+      "background": {
+        "type": "solid",
+        "color": "#031F20"
+      },
+      "hoverColor": "#BEF500",
+      "linkWeight": "bold",
+      "borderColor": "rgba(255,255,255,0.1)",
+      "hoverEffect": "underline",
+      "stickyStyle": "always",
+      "borderBottom": false,
+      "submenuStyle": {
+        "preset": "glassmorphism",
+        "shadow": "md",
+        "animation": "slide-down",
+        "showIcons": true,
+        "background": "blur",
+        "borderRadius": "lg",
+        "showDescriptions": true
+      },
+      "animationType": "none",
+      "showCtaButton": false,
+      "hamburgerStyle": "bars",
+      "activeIndicator": "underline",
+      "logoAlignMobile": 0,
+      "mobileMenuStyle": "drawer-right",
+      "navAlignDesktop": 0,
+      "navBarTextColor": "#ffffff",
+      "logoAlignDesktop": 0,
+      "mobileBreakpoint": "md",
+      "navBarBackground": {
+        "type": "solid",
+        "color": "#000000"
+      },
+      "scrollTransition": true,
+      "animationDuration": 300,
+      "brandRowBackground": {
+        "type": "solid",
+        "color": "#120202"
+      },
+      "logoPositionMobile": "left",
+      "scrolledBackground": {
+        "type": "blur",
+        "color": "#1F2937",
+        "opacity": 95,
+        "blurAmount": 12
+      },
+      "ctaBgColorSecondary": "#000000",
+      "logoPositionDesktop": "left",
+      "showCtaButtonSecondary": false
+    },
+    "ctaButton": {
+      "href": "/contact",
+      "text": "Register Now"
+    },
+    "megaMenuItems": [
+      {
+        "id": "mega-1792296153011-ae9e0",
+        "href": "/events/icpf-a57643/awake-southeast-k8k9",
+        "type": "link",
+        "label": "Registration"
+      }
+    ],
+    "logoDimensions": {
+      "width": "auto",
+      "height": 32,
+      "objectFit": "contain"
+    }
+  },
+  "sections": [
+    {
+      "body": "Empowering Christian youth across America to live boldly for Christ.\n\nWorship, teaching, leadership and lifelong friendships — choose your regional Awake Camp below and reserve your place.",
+      "type": "about",
+      "image": "https://projects.alphacrtv.com/icpf/wp-content/uploads/2026/02/DSC02624-Enhanced-NR-1-scaled.png",
+      "title": "Awake Camps & Youth Conferences",
+      "anchorId": "events-intro",
+      "settings": {
+        "anchorId": "events-intro",
+        "layoutVariant": "about-fullwidth"
+      },
+      "buttonLink": "/events/icpf-a57643",
+      "buttonText": "Register Now"
+    },
+    {
+      "body": "Pick your region to see dates, venue, prices and to register.",
+      "type": "services",
+      "items": [
+        {
+          "link": "/events/icpf-a57643/awake-southeast-k8k9",
+          "image": "https://projects.alphacrtv.com/icpf/wp-content/uploads/2026/02/DSC06145-scaled.jpg",
+          "title": "Awake Camp Southeast",
+          "description": "Regional Awake Camp for youth, students and families in the Southeast."
+        },
+        {
+          "link": "/events/icpf-a57643",
+          "image": "https://projects.alphacrtv.com/icpf/wp-content/uploads/2026/02/RAS05685-Enhanced-NR-scaled.jpg",
+          "title": "Awake Camp Midwest",
+          "description": "Regional Awake Camp for youth, students and families in the Midwest."
+        },
+        {
+          "link": "/events/icpf-a57643",
+          "image": "https://projects.alphacrtv.com/icpf/wp-content/uploads/2026/02/DSC02624-Enhanced-NR-1-scaled.png",
+          "title": "Awake Camp Southwest",
+          "description": "ICPF Southwest Region Camp 2026 — details and registration coming soon."
+        }
+      ],
+      "title": "Upcoming Camps",
+      "anchorId": "camps",
+      "settings": {
+        "anchorId": "camps"
+      },
+      "itemsAlign": "left"
+    },
+    {
+      "body": "Since the first Awake Camp in Waxahachie, TX, ICPF has mentored and equipped the next generation for Christ-centered living and missions.",
+      "type": "columns",
+      "items": [
+        {
+          "icon": "1",
+          "name": "Fellowship",
+          "description": "Build lifelong, Christ-centered friendships."
+        },
+        {
+          "icon": "2",
+          "name": "Leadership",
+          "description": "Be mentored and equipped to lead with purpose."
+        },
+        {
+          "icon": "3",
+          "name": "Community",
+          "description": "Local chapters, one shared mission."
+        },
+        {
+          "icon": "4",
+          "name": "Mission",
+          "description": "Discover your calling and live boldly for Christ."
+        }
+      ],
+      "title": "Why Awake",
+      "anchorId": "why",
+      "settings": {
+        "anchorId": "why"
+      }
+    },
+    {
+      "body": "Spaces are limited — register early to secure your place.",
+      "type": "cta",
+      "title": "Be part of something bigger.",
+      "anchorId": "register",
+      "settings": {
+        "anchorId": "register"
+      },
+      "buttonLink": "/events/icpf-a57643",
+      "buttonText": "Register Now"
+    }
+  ],
+  "landingRedirect": {
+    "target": "/events/icpf-a57643/ICPF Oklahoma AWAKE Camp",
+    "enabled": true
+  }
+}

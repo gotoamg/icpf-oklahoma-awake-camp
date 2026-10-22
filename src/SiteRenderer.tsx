@@ -1,0 +1,1797 @@
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import * as AccordionPrimitive from '@radix-ui/react-accordion';
+import {
+  Star, Quote, ArrowRight, ArrowLeft, CalendarDays, Check, CheckCircle2, Clock, Menu, X, XCircle, Loader2, Users,
+  Facebook, Instagram, Twitter, Linkedin, Youtube, Github, Globe, ExternalLink,
+  Mail, Phone, MapPin, ChevronDown, ChevronLeft, ChevronRight, ZoomIn, icons, type LucideIcon
+} from 'lucide-react';
+import { cn } from './lib/utils';
+
+// ===== Constants for visitor counter & newsletter redirect =====
+const SUPABASE_URL = "https://foemfjmfrulilubshnwn.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZvZW1mam1mcnVsaWx1YnNobnduIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzMTgwMDgsImV4cCI6MjA4MDg5NDAwOH0.amehmaYIeVMh38QtQmvrLLaoravnPzzn4GUBPvPM_Pg";
+const EXPORTED_SITE_ID = "1792292427807";
+const PLATFORM_SITE_SLUG = "icpfevents";
+const EVENTS_ACCOUNT_SLUG = "icpf-a57643";
+
+// ===== Inline FooterVisitorCounter =====
+function FooterVisitorCounter({ textColor }: { textColor?: string }) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    const siteId = EXPORTED_SITE_ID;
+    if (!siteId) return;
+    const sessionKey = 'ez_visitor_counted_' + siteId;
+    const headers: Record<string,string> = { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' };
+
+    if (!sessionStorage.getItem(sessionKey)) {
+      fetch(SUPABASE_URL + '/rest/v1/rpc/increment_visitor_count', {
+        method: 'POST', headers, body: JSON.stringify({ p_site_id: siteId })
+      }).then(r => r.json()).then(d => { if (typeof d === 'number') { sessionStorage.setItem(sessionKey, '1'); setCount(d); } }).catch(() => {});
+    } else {
+      fetch(SUPABASE_URL + '/rest/v1/site_visitor_counts?site_id=eq.' + siteId + '&select=count', { headers })
+        .then(r => r.json()).then(d => { if (d?.[0]?.count) setCount(d[0].count); }).catch(() => {});
+    }
+  }, []);
+  if (count === 0) return null;
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[13px]" style={{ color: textColor || '#9ca3af' }}>
+      <Users className="w-3.5 h-3.5" />
+      {count.toLocaleString()} visitors
+    </span>
+  );
+}
+
+const PLATFORM_ROUTES = ['newsletter', 'blog', 'events'];
+function isPlatformRoute(slug: string) { return PLATFORM_ROUTES.some(r => slug === r || slug.startsWith(r + '/')); }
+function platformRouteUrl(slug: string) {
+  return 'https://' + PLATFORM_SITE_SLUG + '.ezsiteai.com/' + slug;
+}
+
+function EventsSectionRuntime({ accountSlug, limit, layout, onNavigate }: { accountSlug: string; limit: number; layout: string; onNavigate: (slug: string) => void }) {
+  const [events, setEvents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    if (!accountSlug) { setLoading(false); return; }
+    fetch(SUPABASE_URL + '/rest/v1/event_settings?slug=eq.' + encodeURIComponent(accountSlug) + '&select=account_id', { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } })
+      .then(r => r.json())
+      .then(async (rows: any[]) => {
+        const accountId = rows?.[0]?.account_id;
+        if (!accountId) return [];
+        const res = await fetch(SUPABASE_URL + '/rest/v1/events?account_id=eq.' + accountId + '&is_published=eq.true&select=*&order=starts_at.asc&limit=' + limit, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } });
+        return await res.json();
+      })
+      .then((rows: any[]) => { if (!cancelled) setEvents(rows || []); })
+      .catch(() => { if (!cancelled) setEvents([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [accountSlug, limit]);
+  const go = (slug: string) => { onNavigate(slug); window.scrollTo(0, 0); };
+  if (loading) return <div className="py-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
+  if (!accountSlug || !events.length) return <p className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">No published events yet.</p>;
+  return (
+    <div className="space-y-8">
+      <div className={layout === 'list' ? 'grid gap-6 grid-cols-1' : 'grid gap-6 sm:grid-cols-2 lg:grid-cols-3'}>
+        {events.map((event: any) => (
+          <a key={event.id} href={'/events/' + accountSlug + '/' + event.slug} onClick={(e) => { e.preventDefault(); go('events/' + accountSlug + '/' + event.slug); }} className={'group overflow-hidden rounded-lg border bg-card text-card-foreground hover:shadow-md transition-shadow ' + (layout === 'list' ? 'sm:flex' : '')}>
+            {event.image_url && <img src={event.image_url} alt={event.title} className={layout === 'list' ? 'w-full object-cover sm:w-56' : 'aspect-[16/10] w-full object-cover'} />}
+            <div className="space-y-3 p-5">
+              <h3 className="text-lg font-semibold group-hover:text-primary">{event.title}</h3>
+              {event.summary && <p className="text-sm text-muted-foreground">{event.summary}</p>}
+              <p className="flex gap-2 text-sm text-muted-foreground"><CalendarDays className="h-4 w-4 shrink-0 text-primary" />{new Date(event.starts_at).toLocaleString()}</p>
+              <p className="flex gap-2 text-sm text-muted-foreground"><MapPin className="h-4 w-4 shrink-0 text-primary" />{event.location_type === 'online' ? 'Online' : event.location_name || 'Venue announced soon'}</p>
+            </div>
+          </a>
+        ))}
+      </div>
+      <div className="text-center"><button className="text-sm font-semibold text-primary hover:underline" onClick={() => go('events/' + accountSlug)}>View all events</button></div>
+    </div>
+  );
+}
+
+function EventRuntime({ path, onNavigate }: { path: string; onNavigate: (slug: string) => void }) {
+  const parts = path.split('/').filter(Boolean);
+  const accountSlug = parts[1] || '';
+  const eventSlug = parts[2] || '';
+  const registrationId = new URLSearchParams(window.location.search).get('registration');
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState<any>({ name: '', email: '', phone: '', notes: '', quantities: {}, method: '', answers: {} });
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<any>(null);
+  const apiHeaders = { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json' };
+  const api = (table: string, query: string) => fetch(SUPABASE_URL + '/rest/v1/' + table + '?' + query, { headers: apiHeaders }).then(r => { if (!r.ok) throw new Error('Unable to load events'); return r.json(); });
+  const invoke = (name: string, body: any) => fetch(SUPABASE_URL + '/functions/v1/' + name, { method: 'POST', headers: apiHeaders, body: JSON.stringify(body) }).then(r => r.json().then(d => { if (!r.ok || d?.error) throw new Error(d?.error || 'Request failed'); return d; }));
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    api('event_settings', 'slug=eq.' + encodeURIComponent(accountSlug) + '&select=account_id,slug,display_name,logo_url,button_color,accent_color,background_color,confirmation_message')
+      .then(async (settingsRows: any[]) => {
+        const settings = settingsRows?.[0];
+        if (!settings) return null;
+        if (!eventSlug) {
+          const events = await api('events', 'account_id=eq.' + settings.account_id + '&is_published=eq.true&select=*&order=starts_at.asc');
+          return { settings, events };
+        }
+        const eventRows = await api('events', 'account_id=eq.' + settings.account_id + '&slug=eq.' + encodeURIComponent(eventSlug) + '&is_published=eq.true&select=*');
+        const event = eventRows?.[0];
+        if (!event) return null;
+        const rows = await Promise.all([
+          api('event_ticket_types', 'event_id=eq.' + event.id + '&is_active=eq.true&select=*&order=sort_order.asc'),
+          api('event_form_fields', 'account_id=eq.' + settings.account_id + '&is_active=eq.true&select=*&order=sort_order.asc'),
+          fetch(SUPABASE_URL + '/rest/v1/rpc/get_public_event_payment_methods', { method: 'POST', headers: apiHeaders, body: JSON.stringify({ p_account_id: settings.account_id, p_event_id: event.id }) }).then(r => r.json()),
+          fetch(SUPABASE_URL + '/rest/v1/rpc/get_event_seats_left', { method: 'POST', headers: apiHeaders, body: JSON.stringify({ p_event_id: event.id }) }).then(r => r.json()),
+        ]);
+        return { settings, event, tickets: rows[0] || [], fields: rows[1] || [], methods: rows[2] || [], seatsLeft: typeof rows[3] === 'number' ? rows[3] : null };
+      })
+      .then(next => { if (!cancelled) setData(next); })
+      .catch(() => { if (!cancelled) setData(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [accountSlug, eventSlug]);
+
+  useEffect(() => {
+    if (!registrationId) return;
+    let stopped = false;
+    const verify = () => invoke('events-verify', { registrationId }).then(d => { if (!stopped) setResult(d.registration || d); }).catch(() => {});
+    verify();
+    const timer = window.setInterval(verify, 4000);
+    const stop = window.setTimeout(() => window.clearInterval(timer), 30000);
+    return () => { stopped = true; window.clearInterval(timer); window.clearTimeout(stop); };
+  }, [registrationId]);
+
+  const go = (slug: string) => { onNavigate(slug); window.scrollTo(0, 0); };
+  if (loading) return <div className="min-h-[50vh] flex items-center justify-center"><Loader2 className="w-7 h-7 animate-spin text-primary" /></div>;
+  if (!data) return <main className="min-h-[50vh] flex items-center justify-center px-4 text-muted-foreground">This event page could not be found.</main>;
+
+  if (!eventSlug) return (
+    <main className="bg-background py-12 sm:py-16"><div className="container mx-auto max-w-5xl px-4 sm:px-6">
+      <header className="mb-10 text-center"><CalendarDays className="mx-auto mb-4 h-9 w-9 text-primary"/><h1 className="text-3xl sm:text-4xl font-bold text-foreground">{data.settings.display_name || 'Upcoming events'}</h1></header>
+      {!data.events?.length ? <p className="py-12 text-center text-muted-foreground">There are no events scheduled right now. Please check back soon.</p> : <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">{data.events.map((event: any) => (
+        <a key={event.id} href={'/events/' + accountSlug + '/' + event.slug} onClick={(e) => { e.preventDefault(); go('events/' + accountSlug + '/' + event.slug); }} className="group overflow-hidden rounded-lg border bg-card text-card-foreground hover:shadow-md transition-shadow">
+          {event.image_url && <img src={event.image_url} alt={event.title} className="aspect-[16/10] w-full object-cover"/>}<div className="space-y-3 p-5"><h2 className="text-lg font-semibold group-hover:text-primary">{event.title}</h2>{event.summary && <p className="text-sm text-muted-foreground">{event.summary}</p>}<p className="flex gap-2 text-sm text-muted-foreground"><CalendarDays className="h-4 w-4 shrink-0 text-primary"/>{new Date(event.starts_at).toLocaleString()}</p><p className="flex gap-2 text-sm text-muted-foreground"><MapPin className="h-4 w-4 shrink-0 text-primary"/>{event.location_type === 'online' ? 'Online' : event.location_name || 'Venue announced soon'}</p></div>
+        </a>
+      ))}</div>}
+    </div></main>
+  );
+
+  const event = data.event;
+  if (registrationId) {
+    const status = result?.payment_status || result?.status || 'pending';
+    const paid = status === 'paid'; const failed = status === 'failed' || status === 'cancelled'; const Icon = paid ? CheckCircle2 : failed ? XCircle : Clock;
+    return <main className="bg-background py-20"><div className="container mx-auto max-w-lg px-4 text-center"><Icon className={'mx-auto mb-4 h-12 w-12 ' + (paid ? 'text-primary' : failed ? 'text-destructive' : 'text-muted-foreground')}/><h1 className="text-2xl font-bold">{paid ? 'You are booked in' : failed ? 'Payment was not completed' : 'Waiting for confirmation'}</h1><p className="mt-2 text-muted-foreground">{paid ? data.settings.confirmation_message : failed ? 'Your place is not confirmed. You can try booking again.' : 'Your place is reserved while we confirm your payment.'}</p>{result?.confirmation_number && <p className="mt-3 font-mono text-sm">Confirmation: {result.confirmation_number}</p>}<Button variant="outline" className="mt-6" onClick={() => go('events/' + accountSlug)}><ArrowLeft className="mr-2 h-4 w-4"/>Back to events</Button></div></main>;
+  }
+
+  const total = (data.tickets || []).reduce((sum: number, ticket: any) => sum + Number(ticket.price || 0) * Number(form.quantities[ticket.id] || 0), 0);
+  const submit = async () => {
+    if (!form.name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) { alert('Please enter your full name and a valid email.'); return; }
+    const missing = (data.fields || []).find((field: any) => field.required && !form.answers[field.id]); if (missing) { alert(missing.field_label + ' is required.'); return; }
+    setBusy(true);
+    try {
+      const registered = await invoke('events-register', { eventId: event.id, attendeeName: form.name.trim(), attendeeEmail: form.email.trim(), attendeePhone: form.phone.trim(), notes: form.notes.trim(), items: (data.tickets || []).filter((ticket: any) => Number(form.quantities[ticket.id] || 0) > 0).map((ticket: any) => ({ ticketTypeId: ticket.id, quantity: Number(form.quantities[ticket.id]) })), answers: (data.fields || []).map((field: any) => ({ fieldId: field.id, label: field.field_label, value: String(form.answers[field.id] || '') })) });
+      const id = registered.registration.id; const returnUrl = new URL(window.location.href); returnUrl.searchParams.set('registration', id);
+      if (!registered.requiresPayment) { window.location.href = returnUrl.toString(); return; }
+      const checkout = await invoke('events-create-checkout', { registrationId: id, provider: form.method, returnUrl: returnUrl.toString() });
+      if (checkout.mode === 'redirect' && checkout.url) window.location.href = checkout.url;
+      else alert(checkout.instructions || 'Your place is reserved. Follow the payment instructions to confirm it.');
+    } catch (error: any) { alert(error?.message || 'Booking failed. Please try again.'); } finally { setBusy(false); }
+  };
+  return <main className="bg-background py-10 sm:py-14"><div className="container mx-auto max-w-3xl px-4 sm:px-6"><button className="mb-6 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary" onClick={() => go('events/' + accountSlug)}><ArrowLeft className="h-4 w-4"/>All events</button><div className="space-y-6"><div><h1 className="text-3xl font-bold">{event.title}</h1>{event.summary && <p className="mt-2 text-muted-foreground">{event.summary}</p>}<p className="mt-4 flex gap-2 text-sm text-muted-foreground"><CalendarDays className="h-4 w-4 text-primary"/>{new Date(event.starts_at).toLocaleString()}</p></div>{event.image_url && <img src={event.image_url} alt={event.title} className="w-full rounded-lg object-cover"/>}{event.description && <p className="whitespace-pre-line leading-relaxed">{event.description}</p>}<div className="space-y-5 rounded-lg border p-5">{(data.tickets || []).map((ticket: any) => <label key={ticket.id} className="flex items-center justify-between gap-4 rounded-md border p-3"><span><strong className="block">{ticket.name}</strong><small className="text-muted-foreground">{Number(ticket.price) > 0 ? Number(ticket.price).toLocaleString(undefined,{style:'currency',currency:event.currency || 'USD'}) : 'Free'}</small></span><input className="w-20 rounded-md border bg-background px-3 py-2" type="number" min="0" max={event.allow_multiple ? ticket.per_order_limit : 1} value={form.quantities[ticket.id] || 0} onChange={e => setForm({...form, quantities:{...form.quantities,[ticket.id]:Number(e.target.value)}})}/></label>)}<div className="grid gap-4 sm:grid-cols-2"><input className="rounded-md border bg-background px-3 py-2" placeholder="Full name *" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/><input className="rounded-md border bg-background px-3 py-2" type="email" placeholder="Email *" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/><input className="rounded-md border bg-background px-3 py-2 sm:col-span-2" placeholder="Phone" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})}/>{(data.fields || []).map((field:any)=><input key={field.id} className="rounded-md border bg-background px-3 py-2" placeholder={field.field_label + (field.required ? ' *' : '')} value={form.answers[field.id] || ''} onChange={e=>setForm({...form,answers:{...form.answers,[field.id]:e.target.value}})}/>)}</div>{event.is_paid && total > 0 && <select className="w-full rounded-md border bg-background px-3 py-2" value={form.method} onChange={e=>setForm({...form,method:e.target.value})}><option value="">Choose payment method</option>{(data.methods || []).map((method:any)=><option key={method.provider} value={method.provider}>{method.display_name}</option>)}</select>}<div className="flex items-center justify-between border-t pt-4"><strong className="text-xl">{total > 0 ? total.toLocaleString(undefined,{style:'currency',currency:event.currency || 'USD'}) : 'Free'}</strong><Button disabled={busy} onClick={submit}>{busy && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}{event.is_paid && total > 0 ? 'Continue to payment' : 'Complete registration'}</Button></div></div></div></div></main>;
+}
+
+// ===== Inline EzForms embed (mirrors SitePlugins.EzFormsEmbed) =====
+function EzFormsEmbedRuntime({ form, primaryBtnStyle }: { form: any; primaryBtnStyle?: any }) {
+  const [values, setValues] = useState<Record<string, any>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  if (!form || !form.id) return null;
+  const fields: any[] = Array.isArray(form.fields) ? form.fields : [];
+  const setVal = (id: string, v: any) => setValues((s) => ({ ...s, [id]: v }));
+  const onSubmit = async (e: any) => {
+    e.preventDefault();
+    setErr(null); setSubmitting(true);
+    try {
+      const res = await fetch(SUPABASE_URL + '/rest/v1/form_submissions', {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ form_id: form.id, user_id: form.user_id, data: values }),
+      });
+      if (!res.ok) throw new Error('Submission failed (' + res.status + ')');
+      setSubmitted(true);
+    } catch (e: any) {
+      setErr(e?.message || 'Submission failed');
+    } finally { setSubmitting(false); }
+  };
+  return (
+    <section className="w-full bg-background py-12 px-4">
+      <div className="w-full max-w-2xl mx-auto">
+        {form.name && <h2 className="text-2xl sm:text-3xl font-bold text-center mb-2">{form.name}</h2>}
+        {form.description && <p className="text-center text-muted-foreground mb-6">{form.description}</p>}
+        {submitted ? (
+          <div className="bg-card border border-border rounded-2xl p-8 text-center">
+            <h3 className="text-xl font-semibold mb-2">Thank you!</h3>
+            <p className="text-muted-foreground">Your submission has been received.</p>
+          </div>
+        ) : (
+          <form className="bg-card border border-border rounded-2xl p-6 sm:p-8 space-y-4" onSubmit={onSubmit}>
+            {fields.map((f) => {
+              const id = f.id || f.label;
+              const base = 'flex w-full rounded-md border border-input bg-background px-4 py-2 text-base placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+              if (f.type === 'textarea') return (
+                <div key={id}><label className="block text-sm font-medium mb-1">{f.label}{f.required && ' *'}</label>
+                  <textarea required={f.required} placeholder={f.placeholder} className={base + ' min-h-[120px] resize-y'} value={values[id] || ''} onChange={(e: any) => setVal(id, e.target.value)} /></div>
+              );
+              if (f.type === 'select') return (
+                <div key={id}><label className="block text-sm font-medium mb-1">{f.label}{f.required && ' *'}</label>
+                  <select required={f.required} className={base + ' h-12'} value={values[id] || ''} onChange={(e: any) => setVal(id, e.target.value)}>
+                    <option value="">Select…</option>
+                    {(f.options || []).map((o: string, i: number) => <option key={i} value={o}>{o}</option>)}
+                  </select></div>
+              );
+              if (f.type === 'checkbox') return (
+                <label key={id} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" required={f.required} checked={!!values[id]} onChange={(e: any) => setVal(id, e.target.checked)} />
+                  {f.label}{f.required && ' *'}
+                </label>
+              );
+              const inputType = f.type === 'email' ? 'email' : f.type === 'phone' ? 'tel' : f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text';
+              return (
+                <div key={id}><label className="block text-sm font-medium mb-1">{f.label}{f.required && ' *'}</label>
+                  <input type={inputType} required={f.required} placeholder={f.placeholder} className={base + ' h-12'} value={values[id] || ''} onChange={(e: any) => setVal(id, e.target.value)} /></div>
+              );
+            })}
+            {err && <p className="text-sm text-red-600">{err}</p>}
+            <button type="submit" disabled={submitting} className="w-full h-12 rounded-md font-semibold text-white disabled:opacity-60" style={primaryBtnStyle || { backgroundColor: '#111827' }}>
+              {submitting ? 'Submitting…' : 'Submit'}
+            </button>
+          </form>
+        )}
+      </div>
+    </section>
+  );
+}
+
+// ===== Per-letter styled text (color + fontFamily) =====
+function renderStyledText(text: string, styles?: any[], logo?: { url?: string; alt?: string; heightEm?: number }, lineAligns?: any[]): any {
+  if (!text) return text;
+  const TOKEN = '{logo}';
+  const hasToken = !!(logo && logo.url) && text.indexOf(TOKEN) !== -1;
+  const hasStyles = Array.isArray(styles) && styles.some((s: any) => s && (s.color || s.fontFamily));
+  const hasNewline = text.indexOf('\n') !== -1;
+  const hasLineAligns = Array.isArray(lineAligns) && lineAligns.some((a: any) => a && a !== 'inherit');
+  if (!hasStyles && !hasToken && !hasNewline && !hasLineAligns) return text;
+  const lines: any[][] = [[]];
+  let i = 0;
+  let k = 0;
+  while (i < text.length) {
+    if (hasToken && text.substr(i, TOKEN.length) === TOKEN) {
+      const prevCh = i === 0 ? '\n' : text[i - 1];
+      const nextCh = i + TOKEN.length >= text.length ? '\n' : text[i + TOKEN.length];
+      const isBlock = prevCh === '\n' && nextCh === '\n';
+      lines[lines.length - 1].push(React.createElement('img', {
+        key: 'logo-' + (k++),
+        src: logo!.url,
+        alt: (logo && logo.alt) || '',
+        style: isBlock
+          ? { height: ((logo && logo.heightEm) || 1.2) + 'em', width: 'auto', display: 'block', margin: '0.4em auto 0' }
+          : { height: ((logo && logo.heightEm) || 1) + 'em', width: 'auto', display: 'inline-block', verticalAlign: 'middle', margin: '0 0.1em' },
+      }));
+      i += TOKEN.length;
+      continue;
+    }
+    const ch = text[i];
+    if (ch === '\n') { lines.push([]); i++; continue; }
+    const s = styles && styles[i];
+    if (s && (s.color || s.fontFamily)) {
+      lines[lines.length - 1].push(React.createElement('span', { key: 'c-' + (k++), style: { color: s.color, fontFamily: s.fontFamily } }, ch));
+    } else {
+      lines[lines.length - 1].push(ch);
+    }
+    i++;
+  }
+  return lines.map((nodes: any[], idx: number) => {
+    const align = lineAligns && lineAligns[idx];
+    const textAlign = align && align !== 'inherit' ? align : undefined;
+    return React.createElement('span', { key: 'line-' + idx, style: { display: 'block', textAlign } }, nodes.length > 0 ? nodes : '\u00A0');
+  });
+}
+
+// Load Google Fonts for unique families referenced by per-letter styles
+function useLetterFontsFromSlides(slides: any[]) {
+  useEffect(() => {
+    if (typeof document === 'undefined' || !Array.isArray(slides)) return;
+    const all: any[] = [];
+    for (const s of slides) {
+      if (Array.isArray(s?.titleStyles)) all.push.apply(all, s.titleStyles);
+      if (Array.isArray(s?.subtitleStyles)) all.push.apply(all, s.subtitleStyles);
+    }
+    const families = new Set<string>();
+    for (const ls of all) {
+      const ff = ls && ls.fontFamily;
+      if (!ff) continue;
+      const m = String(ff).match(/['"]?([^'",]+)['"]?/);
+      if (m && m[1]) families.add(m[1].trim());
+    }
+    families.forEach((family: string) => {
+      const id = 'letter-font-' + family.replace(/\s+/g, '-').toLowerCase();
+      if (document.getElementById(id)) return;
+      const link = document.createElement('link');
+      link.id = id;
+      link.rel = 'stylesheet';
+      link.href = 'https://fonts.googleapis.com/css2?family=' + family.replace(/ /g, '+') + ':wght@400;600;700&display=swap';
+      document.head.appendChild(link);
+    });
+  }, [slides]);
+}
+
+
+
+// ===== Inline Accordion (matches shadcn/ui) =====
+const Accordion = AccordionPrimitive.Root;
+const AccordionItem = ({ className, ...props }: any) => (
+  <AccordionPrimitive.Item className={cn("border-b", className)} {...props} />
+);
+const AccordionTrigger = ({ className, children, ...props }: any) => (
+  <AccordionPrimitive.Header className="flex">
+    <AccordionPrimitive.Trigger className={cn("flex flex-1 items-center justify-between py-4 font-medium transition-all hover:underline [&[data-state=open]>svg]:rotate-180", className)} {...props}>
+      {children}
+      <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200" />
+    </AccordionPrimitive.Trigger>
+  </AccordionPrimitive.Header>
+);
+const AccordionContent = ({ className, children, ...props }: any) => (
+  <AccordionPrimitive.Content className="overflow-hidden text-sm transition-all data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down" {...props}>
+    <div className={cn("pb-4 pt-0", className)}>{children}</div>
+  </AccordionPrimitive.Content>
+);
+
+// ===== Inline Button =====
+function cleanHtml(input: any): string {
+  const html = input == null ? '' : String(input);
+  if (typeof window === 'undefined' || !html) return html.replace(/<\/?script[^>]*>/gi, '');
+  const doc = new DOMParser().parseFromString('<div>' + html + '</div>', 'text/html');
+  doc.querySelectorAll('script,iframe,object,embed,link,meta,base,form').forEach((el) => el.remove());
+  doc.querySelectorAll('*').forEach((el) => {
+    Array.from(el.attributes).forEach((a) => {
+      const n = a.name.toLowerCase();
+      const v = a.value.replace(/\s+/g, '').toLowerCase();
+      if (n.startsWith('on') || ((n === 'href' || n === 'src' || n === 'xlink:href' || n === 'action' || n === 'formaction') && (v.startsWith('javascript:') || v.startsWith('vbscript:') || v.startsWith('data:text')))) el.removeAttribute(a.name);
+    });
+  });
+  return doc.body.firstElementChild ? doc.body.firstElementChild.innerHTML : '';
+}
+
+function Button({ className, variant, size, style, children, disabled, onClick, type, asChild, ...props }: any) {
+  const base = "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
+  const variants: any = {
+    default: "bg-primary text-primary-foreground hover:bg-primary/90",
+    outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+    ghost: "hover:bg-accent hover:text-accent-foreground",
+  };
+  const sizes: any = {
+    default: "h-10 px-4 py-2",
+    sm: "h-9 rounded-md px-3",
+    lg: "h-11 rounded-md px-8",
+    icon: "h-10 w-10",
+  };
+  return (
+    <button className={cn(base, variants[variant || 'default'], sizes[size || 'default'], className)} style={style} disabled={disabled} onClick={onClick} type={type || 'button'} {...props}>
+      {children}
+    </button>
+  );
+}
+
+// ===== DynamicIcon =====
+function DynamicIcon({ name, className, size = 16 }: { name: string; className?: string; size?: number }) {
+  const formatted = name.split(/[-_\s]/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
+  const Icon = (icons as Record<string, LucideIcon>)[formatted];
+  if (!Icon) { const C = icons.Circle; return <C className={cn('text-muted-foreground', className)} size={size} />; }
+  return <Icon className={className} size={size} />;
+}
+
+// ===== ScrollReveal =====
+function ScrollReveal({ children, className = '', animation = 'fade-up', delay = 0, duration = 700 }: any) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ob = new IntersectionObserver(([e]) => { if (e.isIntersecting) { setIsVisible(true); ob.unobserve(el); } }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+    ob.observe(el);
+    return () => ob.disconnect();
+  }, []);
+  const easing = 'cubic-bezier(0.16, 1, 0.3, 1)';
+  const baseStyles: React.CSSProperties = { transition: `opacity ${duration}ms ${easing}, transform ${duration}ms ${easing}, filter ${duration}ms ${easing}`, transitionDelay: `${delay}ms`, willChange: 'opacity, transform' };
+  const anims: any = {
+    'fade-up': { hidden: { opacity: 0, transform: 'translateY(40px)' }, visible: { opacity: 1, transform: 'translateY(0)' } },
+    'fade-in': { hidden: { opacity: 0 }, visible: { opacity: 1 } },
+    'slide-left': { hidden: { opacity: 0, transform: 'translateX(-60px)' }, visible: { opacity: 1, transform: 'translateX(0)' } },
+    'slide-right': { hidden: { opacity: 0, transform: 'translateX(60px)' }, visible: { opacity: 1, transform: 'translateX(0)' } },
+    'blur-in': { hidden: { opacity: 0, transform: 'translateY(20px) scale(0.98)', filter: 'blur(10px)' }, visible: { opacity: 1, transform: 'translateY(0) scale(1)', filter: 'blur(0px)' } },
+    'scale': { hidden: { opacity: 0, transform: 'scale(0.9)' }, visible: { opacity: 1, transform: 'scale(1)' } },
+    'zoom-in': { hidden: { opacity: 0, transform: 'scale(0.75)' }, visible: { opacity: 1, transform: 'scale(1)' } },
+    'bounce-in': { hidden: { opacity: 0, transform: 'translateY(50px) scale(0.95)' }, visible: { opacity: 1, transform: 'translateY(0) scale(1)' } },
+    'flip-up': { hidden: { opacity: 0, transform: 'perspective(1000px) rotateX(15deg) translateY(30px)' }, visible: { opacity: 1, transform: 'perspective(1000px) rotateX(0) translateY(0)' } },
+  };
+  const cur = anims[animation] || anims['fade-up'];
+  const s = isVisible ? cur.visible : cur.hidden;
+  return <div ref={ref} className={className} style={{ ...baseStyles, ...s }}>{children}</div>;
+}
+
+// ===== SimpleDropdown with recursive nested submenus =====
+const defaultSubmenuStyle = { animation: 'fade', background: 'solid', borderRadius: 'md', shadow: 'lg', showIcons: true, showDescriptions: true };
+
+function getAnimationClasses(animation: string) {
+  switch (animation) {
+    case 'fade': return 'animate-in fade-in-0 duration-200';
+    case 'slide-down': return 'animate-in slide-in-from-top-2 fade-in-0 duration-200';
+    case 'scale': return 'animate-in zoom-in-95 fade-in-0 duration-200';
+    case 'slide-up': return 'animate-in slide-in-from-bottom-2 fade-in-0 duration-200';
+    default: return '';
+  }
+}
+function getBackgroundClasses(bg: string) {
+  switch (bg) {
+    case 'blur': return 'backdrop-blur-md bg-background/80';
+    case 'gradient': return 'bg-gradient-to-b from-background to-muted';
+    default: return 'bg-popover';
+  }
+}
+function getBorderRadiusClasses(r: string) {
+  switch (r) { case 'none': return 'rounded-none'; case 'sm': return 'rounded-sm'; case 'lg': return 'rounded-lg'; case 'xl': return 'rounded-xl'; default: return 'rounded-md'; }
+}
+function getShadowClasses(s: string) {
+  switch (s) { case 'none': return 'shadow-none'; case 'sm': return 'shadow-sm'; case 'md': return 'shadow-md'; case 'xl': return 'shadow-xl'; default: return 'shadow-lg'; }
+}
+
+const fontSizeMap: Record<string, string> = { xs: '0.75rem', sm: '0.875rem', base: '1rem', lg: '1.125rem', xl: '1.25rem', '2xl': '1.5rem' };
+const fontWeightMap: Record<string, number> = { normal: 400, medium: 500, semibold: 600, bold: 700 };
+
+function getSubTextTransform(linkStyle?: string): React.CSSProperties {
+  switch (linkStyle) {
+    case 'uppercase': return { textTransform: 'uppercase' as const };
+    case 'small-caps': return { fontVariant: 'small-caps' };
+    default: return {};
+  }
+}
+
+function NestedSubmenu({ item, submenuStyle, onNavigate, depth, submenuItemStyle, hoverColor }: { item: any; submenuStyle: any; onNavigate: (href: string) => void; depth: number; submenuItemStyle: React.CSSProperties; hoverColor?: string }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  return (
+    <div className="relative" onMouseEnter={() => setIsOpen(true)} onMouseLeave={() => setIsOpen(false)}>
+      <button
+        className={cn('w-full px-4 py-2.5 text-left hover:bg-muted/80 flex items-center gap-3 transition-colors text-popover-foreground')}
+        style={submenuItemStyle}
+        onClick={(e: any) => { e.preventDefault(); if (item.href) onNavigate(item.href); }}
+      >
+        {submenuStyle.showIcons && item.icon && <DynamicIcon name={item.icon} className="w-4 h-4 text-muted-foreground flex-shrink-0" />}
+        <div className="flex-1 min-w-0">
+          <div className="font-medium" style={{ fontSize: submenuItemStyle.fontSize }}>{item.label}</div>
+          {submenuStyle.showDescriptions && item.description && <div className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{item.description}</div>}
+        </div>
+        <ChevronRight className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+      </button>
+      {item.children && item.children.length > 0 && (
+        <div className={cn('absolute left-full top-0 pl-1 z-50 transition-all duration-200', isOpen ? 'opacity-100 visible translate-x-0' : 'opacity-0 invisible -translate-x-1 pointer-events-none')}>
+          <div className={cn('min-w-44 py-2 border border-border', getBackgroundClasses(submenuStyle.background), getBorderRadiusClasses(submenuStyle.borderRadius), getShadowClasses(submenuStyle.shadow))}>
+            {item.children.map((child: any, idx: number) => (
+              child.children && child.children.length > 0 && depth < 3 ? (
+                <NestedSubmenu key={idx} item={child} submenuStyle={submenuStyle} onNavigate={onNavigate} depth={depth + 1} submenuItemStyle={submenuItemStyle} hoverColor={hoverColor} />
+              ) : (
+                <button key={idx} onClick={() => onNavigate(child.href)}
+                  onMouseEnter={() => setHoveredIdx(idx)}
+                  onMouseLeave={() => setHoveredIdx(null)}
+                  className="w-full px-4 py-2.5 text-left hover:bg-muted/80 flex items-center gap-3 transition-colors text-popover-foreground"
+                  style={{ ...submenuItemStyle, color: hoveredIdx === idx && hoverColor ? hoverColor : submenuItemStyle.color }}>
+                  {submenuStyle.showIcons && child.icon && <DynamicIcon name={child.icon} className="w-4 h-4 text-muted-foreground flex-shrink-0" />}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium" style={{ fontSize: submenuItemStyle.fontSize }}>{child.label}</div>
+                    {submenuStyle.showDescriptions && child.description && <div className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{child.description}</div>}
+                  </div>
+                </button>
+              )
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SimpleDropdown({ item, headerSettings, onNavigate, linkClasses, textColor = 'inherit' }: any) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  const submenuStyle = headerSettings?.submenuStyle || defaultSubmenuStyle;
+
+  const rootFontSize = fontSizeMap[headerSettings?.fontSize || 'base'] || fontSizeMap['base'];
+  const rootFontFamily = headerSettings?.fontFamily;
+  const subFontFamily = headerSettings?.submenuFontFamily || rootFontFamily;
+  const subFontSize = fontSizeMap[headerSettings?.submenuFontSize || headerSettings?.fontSize || 'base'] || fontSizeMap['base'];
+  const subTextColor = headerSettings?.submenuTextColor;
+  const subHoverColor = headerSettings?.submenuHoverColor || headerSettings?.hoverColor;
+  const subWeight = fontWeightMap[headerSettings?.submenuLinkWeight || 'medium'] || 500;
+  const subTransform = getSubTextTransform(headerSettings?.submenuLinkStyle);
+
+  const submenuItemStyle: React.CSSProperties = {
+    fontFamily: subFontFamily || undefined,
+    fontSize: subFontSize,
+    fontWeight: subWeight,
+    color: subTextColor || undefined,
+    ...subTransform,
+  };
+
+  const rootTriggerStyle: React.CSSProperties = {
+    color: textColor,
+    fontFamily: rootFontFamily || undefined,
+    fontSize: rootFontSize,
+  };
+
+  return (
+    <div className="relative" onMouseEnter={() => setIsOpen(true)} onMouseLeave={() => setIsOpen(false)}>
+      <button className={cn('flex items-center gap-1.5 transition-colors', linkClasses)} style={rootTriggerStyle}
+        onClick={(e: any) => { e.preventDefault(); if (item.href) onNavigate(item.href); }}>
+        {submenuStyle.showIcons && item.icon && <DynamicIcon name={item.icon} className="w-4 h-4" />}
+        <span>{item.label}</span>
+        <ChevronDown className={cn('h-4 w-4 transition-transform duration-200', isOpen && 'rotate-180')} />
+      </button>
+      {item.children && item.children.length > 0 && (
+        <div className={cn('absolute top-full left-0 pt-2 z-50 transition-all duration-200', isOpen ? 'opacity-100 visible translate-y-0' : 'opacity-0 invisible translate-y-1 pointer-events-none')}>
+          <div className={cn('min-w-48 py-2 border border-border',
+            getBackgroundClasses(submenuStyle.background || 'solid'),
+            getBorderRadiusClasses(submenuStyle.borderRadius || 'md'),
+            getShadowClasses(submenuStyle.shadow || 'lg')
+          )}
+            style={{ backgroundColor: submenuStyle.backgroundColor, borderColor: submenuStyle.borderColor }}
+          >
+            {item.children.map((child: any, idx: number) => (
+              child.children && child.children.length > 0 ? (
+                <NestedSubmenu key={idx} item={child} submenuStyle={submenuStyle} onNavigate={onNavigate} depth={1} submenuItemStyle={submenuItemStyle} hoverColor={subHoverColor} />
+              ) : (
+                <button key={idx} onClick={() => { onNavigate(child.href); setIsOpen(false); }}
+                  onMouseEnter={() => setHoveredIdx(idx)}
+                  onMouseLeave={() => setHoveredIdx(null)}
+                  className="w-full px-4 py-2.5 text-left hover:bg-muted/80 flex items-center gap-3 transition-colors text-popover-foreground"
+                  style={{ ...submenuItemStyle, color: hoveredIdx === idx && subHoverColor ? subHoverColor : submenuItemStyle.color }}>
+                  {submenuStyle.showIcons && child.icon && <DynamicIcon name={child.icon} className="w-4 h-4 text-muted-foreground flex-shrink-0" />}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium" style={{ fontSize: subFontSize }}>{child.label}</div>
+                    {submenuStyle.showDescriptions && child.description && <div className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{child.description}</div>}
+                  </div>
+                </button>
+              )
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ===== MultiSlideHero =====
+function MultiSlideHero({ heroData }: { heroData: any }) {
+  const config = useMemo(() => {
+    if (heroData.config) return heroData.config;
+    // Migrate legacy hero data
+    const images = heroData.heroImages?.length ? heroData.heroImages : heroData.heroImage ? [heroData.heroImage] : [''];
+    const slides = images.map((image: string, index: number) => ({
+      id: 'slide-' + index,
+      title: index === 0 ? heroData.heading : '',
+      subtitle: index === 0 ? heroData.subheading : '',
+      primaryButton: index === 0 && heroData.primaryCTA ? { text: heroData.primaryCTA, link: '#contact' } : undefined,
+      secondaryButton: index === 0 && heroData.secondaryCTA ? { text: heroData.secondaryCTA, link: '#about' } : undefined,
+      backgroundImage: image,
+      overlayColor: '#000000',
+      overlayOpacity: heroData.imageOverlay ?? 50,
+    }));
+    return {
+      slides,
+      slider: { enabled: images.length > 1, autoplay: true, autoplaySpeed: heroData.sliderInterval || 5000, transitionSpeed: 600, loop: true, pauseOnHover: true },
+      layout: { fullWidth: true, height: 'custom', contentAlign: 'center', verticalAlign: 'middle', maxWidth: 1200 },
+      navigation: { showArrows: true, showDots: true, arrowPosition: 'inside', dotPosition: 'bottom-center' },
+      animation: { transitionType: 'fade', textAnimation: 'fade', textAnimationDelay: 200 },
+      responsive: { heights: { desktop: 600, tablet: 500, mobile: 400 }, hideTextOnMobile: false, fontSizes: { desktop: { title: '4rem', subtitle: '1.5rem', description: '1.125rem' } } },
+    };
+  }, [heroData]);
+
+  const slides = config.slides || [];
+  const slider = config.slider || {};
+  const layout = config.layout || {};
+  const navigation = config.navigation || {};
+  const animation = config.animation || {};
+  const responsive = config.responsive || {};
+  const isSingle = slides.length <= 1 || !slider.enabled;
+
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+
+  useLetterFontsFromSlides(slides);
+
+  useEffect(() => {
+    if (isSingle || !slider.autoplay) return;
+    const t = setInterval(() => { if (!isPaused) setCurrentIndex(c => (c + 1) % slides.length); }, slider.autoplaySpeed || 5000);
+    return () => clearInterval(t);
+  }, [isSingle, slider.autoplay, slider.autoplaySpeed, isPaused, slides.length]);
+
+  const next = () => setCurrentIndex(c => (c + 1) % slides.length);
+  const prev = () => setCurrentIndex(c => (c - 1 + slides.length) % slides.length);
+
+  if (!config || slides.length === 0) return <div className="relative h-[600px] bg-muted flex items-center justify-center"><p className="text-muted-foreground">No hero content configured</p></div>;
+
+  const heightStyle = layout.height === 'fullscreen' ? { height: '100vh' } : { height: responsive.heights?.desktop || 600 };
+
+  return (
+    <section className={cn('relative overflow-hidden', layout.fullWidth ? 'w-full' : 'container mx-auto')} style={heightStyle}
+      onMouseEnter={() => setIsPaused(true)} onMouseLeave={() => setIsPaused(false)}>
+      <div className="relative h-full">
+        {slides.map((slide: any, index: number) => {
+          const isActive = index === currentIndex;
+          const overlayStyle = { backgroundColor: slide.overlayColor || '#000000', opacity: (slide.overlayOpacity ?? 50) / 100 };
+          const transitionClass = animation.transitionType === 'zoom' ? (isActive ? 'scale-100 opacity-100' : 'scale-110 opacity-0') : (isActive ? 'opacity-100' : 'opacity-0');
+          const alignH = { left: 'items-start text-left', center: 'items-center text-center', right: 'items-end text-right' }[layout.contentAlign || 'center'];
+          const alignV = { top: 'justify-start pt-24', middle: 'justify-center', bottom: 'justify-end pb-24' }[layout.verticalAlign || 'middle'];
+
+          const scopeClass = 'hero-slide-' + (slide.id || index);
+          const d = responsive.fontSizes?.desktop || {};
+          const t = responsive.fontSizes?.tablet || {};
+          const m = responsive.fontSizes?.mobile || {};
+          const heroFontBlock = [
+            '.' + scopeClass + ' .hero-title { font-size: ' + (d.title || '4rem') + '; }',
+            '.' + scopeClass + ' .hero-subtitle { font-size: ' + (d.subtitle || '1.5rem') + '; }',
+            '.' + scopeClass + ' .hero-description { font-size: ' + (d.description || '1.125rem') + '; }',
+            '@media (max-width: 1023px) {',
+            '  .' + scopeClass + ' .hero-title { font-size: ' + (t.title || '2.5rem') + '; }',
+            '  .' + scopeClass + ' .hero-subtitle { font-size: ' + (t.subtitle || '1.25rem') + '; }',
+            '  .' + scopeClass + ' .hero-description { font-size: ' + (t.description || '1rem') + '; }',
+            '}',
+            '@media (max-width: 767px) {',
+            '  .' + scopeClass + ' .hero-title { font-size: ' + (m.title || '2rem') + '; }',
+            '  .' + scopeClass + ' .hero-subtitle { font-size: ' + (m.subtitle || '1.125rem') + '; }',
+            '  .' + scopeClass + ' .hero-description { font-size: ' + (m.description || '0.875rem') + '; }',
+            '}',
+          ].join(' ');
+
+          return (
+            <div key={slide.id || index} className={cn('absolute inset-0 will-change-transform transition-all', transitionClass, isActive ? 'z-10' : 'z-0', scopeClass)} style={{ transitionDuration: (slider.transitionSpeed || 600) + 'ms' }}>
+              <style dangerouslySetInnerHTML={{ __html: heroFontBlock }} />
+              {slide.backgroundImage && (
+                <div className="absolute inset-0 bg-cover bg-no-repeat" style={{ backgroundImage: 'url(' + slide.backgroundImage + ')', backgroundPosition: slide.backgroundPosition ? slide.backgroundPosition.x + '% ' + slide.backgroundPosition.y + '%' : 'center center' }} />
+              )}
+              <div className="absolute inset-0" style={overlayStyle} />
+              <div className={cn('relative z-10 flex flex-col h-full px-4 sm:px-6 lg:px-8', alignH, alignV)} style={{ maxWidth: layout.maxWidth ? layout.maxWidth + 'px' : undefined, margin: '0 auto' }}>
+                <div className={cn('max-w-4xl', isActive ? 'animate-fade-in' : 'opacity-0 translate-y-4')} style={{ animationDelay: (animation.textAnimationDelay || 200) + 'ms', animationFillMode: 'both' }}>
+                  {slide.title && <h1 className="hero-title font-bold text-white mb-4 leading-tight" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.3)' }}>{renderStyledText(slide.title, slide.titleStyles, { url: slide.inlineLogoUrl, alt: slide.inlineLogoAlt, heightEm: slide.inlineLogoHeight }, slide.titleLineAlign)}</h1>}
+                  {slide.subtitle && <p className="hero-subtitle text-white/90 mb-6" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>{renderStyledText(slide.subtitle, slide.subtitleStyles, { url: slide.inlineLogoUrl, alt: slide.inlineLogoAlt, heightEm: slide.inlineLogoHeight }, slide.subtitleLineAlign)}</p>}
+                  {slide.description && <p className="hero-description text-white/80 mb-8 max-w-2xl">{slide.description}</p>}
+                  {(slide.primaryButton || slide.secondaryButton) && (
+                    <div className={cn('flex flex-wrap gap-4', layout.contentAlign === 'center' && 'justify-center', layout.contentAlign === 'right' && 'justify-end')}>
+                      {slide.primaryButton && <a href={slide.primaryButton.link || '#'} className="inline-flex items-center justify-center h-11 rounded-md px-8 text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90">{slide.primaryButton.text}</a>}
+                      {slide.secondaryButton && <a href={slide.secondaryButton.link || '#'} className="inline-flex items-center justify-center h-11 rounded-md px-8 text-sm font-semibold border-2 border-white text-white hover:bg-white/10">{slide.secondaryButton.text}</a>}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {navigation.showArrows && !isSingle && (
+        <>
+          <button onClick={prev} className="absolute top-1/2 -translate-y-1/2 left-0 mx-4 z-20 bg-black/20 hover:bg-black/40 text-white h-12 w-12 rounded-full flex items-center justify-center"><ChevronLeft className="h-8 w-8" /></button>
+          <button onClick={next} className="absolute top-1/2 -translate-y-1/2 right-0 mx-4 z-20 bg-black/20 hover:bg-black/40 text-white h-12 w-12 rounded-full flex items-center justify-center"><ChevronRight className="h-8 w-8" /></button>
+        </>
+      )}
+      {navigation.showDots && !isSingle && (
+        <div className="absolute bottom-8 z-20 flex gap-2 left-1/2 -translate-x-1/2">
+          {slides.map((_: any, index: number) => (
+            <button key={index} onClick={() => setCurrentIndex(index)} className={cn('w-2 h-2 rounded-full transition-all duration-300', index === currentIndex ? 'bg-white w-6' : 'bg-white/50 hover:bg-white/70')} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ===== Gallery with lightbox =====
+function GalleryGrid({ images, columnLayout = '4' }: { images: string[]; columnLayout?: string }) {
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
+  if (!images || images.length === 0) return null;
+  return (
+    <>
+      <div className={cn('grid gap-4', columnLayout === '2' && 'grid-cols-2', columnLayout === '3' && 'grid-cols-2 md:grid-cols-3', (columnLayout === '4' || !columnLayout) && 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4')}>
+        {images.map((img: string, index: number) => (
+          <div key={index} className="rounded-lg overflow-hidden group cursor-pointer relative aspect-square" onClick={() => { setLightboxIndex(index); setLightboxOpen(true); }}>
+            <img src={img} alt={'Gallery image ' + (index + 1)} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+              <ZoomIn className="h-8 w-8 text-white" />
+            </div>
+          </div>
+        ))}
+      </div>
+      {lightboxOpen && (
+        <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center" onClick={() => setLightboxOpen(false)}>
+          <button className="absolute top-4 right-4 z-50 text-white hover:bg-white/20 p-2 rounded" onClick={(e) => { e.stopPropagation(); setLightboxOpen(false); }}><X className="h-6 w-6" /></button>
+          <div className="absolute top-4 left-4 z-50 text-white/80 text-sm">{lightboxIndex + 1} / {images.length}</div>
+          {lightboxIndex > 0 && <button className="absolute left-4 z-50 text-white hover:bg-white/20 p-2 rounded" onClick={(e) => { e.stopPropagation(); setLightboxIndex(i => i - 1); }}><ChevronDown className="h-8 w-8 -rotate-90" /></button>}
+          {lightboxIndex < images.length - 1 && <button className="absolute right-4 z-50 text-white hover:bg-white/20 p-2 rounded" onClick={(e) => { e.stopPropagation(); setLightboxIndex(i => i + 1); }}><ChevronDown className="h-8 w-8 rotate-90" /></button>}
+          <img src={images[lightboxIndex]} alt="" className="max-w-full max-h-[80vh] object-contain rounded-lg" onClick={e => e.stopPropagation()} />
+        </div>
+      )}
+    </>
+  );
+}
+
+// ===== Helper functions =====
+const hexToHsl = (hex: string): string => {
+  if (!hex || !hex.startsWith('#')) return hex;
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0; const l = (max + min) / 2;
+  if (max !== min) { const d = max - min; s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) { case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break; case g: h = ((b - r) / d + 2) / 6; break; case b: h = ((r - g) / d + 4) / 6; break; } }
+  return Math.round(h * 360) + ' ' + Math.round(s * 100) + '% ' + Math.round(l * 100) + '%';
+};
+const isColorDark = (color: string): boolean => { if (!color || !color.startsWith('#')) return false; const hex = color.replace('#', ''); const r = parseInt(hex.substr(0, 2), 16); const g = parseInt(hex.substr(2, 2), 16); const b = parseInt(hex.substr(4, 2), 16); return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.5; };
+const hexToRgba = (hex: string, alpha: number) => { if (!hex?.startsWith('#') || hex.length !== 7) return hex; const r = parseInt(hex.slice(1, 3), 16); const g = parseInt(hex.slice(3, 5), 16); const b = parseInt(hex.slice(5, 7), 16); return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + alpha + ')'; };
+const slugify = (text?: string): string => { if (!text) return ''; return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''); };
+
+// ===== MAIN SiteRenderer =====
+export function SiteRenderer({ content, businessName, ezforms }: { content: any; businessName: string; ezforms?: any[] }) {
+  const { header, footer, hero, sections: rawSections, pages, globalStyles } = content;
+  const footerEmail = footer?.contactInfo?.email?.trim();
+  const footerPhone = footer?.contactInfo?.phone?.trim();
+  const hasVisibleFooterEmail = Boolean(footerEmail && footerEmail.toLowerCase() !== 'contact@example.com');
+  const hasVisibleFooterPhone = Boolean(footerPhone && footerPhone !== '(555) 123-4567');
+  const defaultHeaderSettings = { isSticky: true, stickyStyle: 'always', height: 'normal', background: { type: 'solid', color: '#1F2937', opacity: 95 }, scrolledBackground: { type: 'blur', color: '#1F2937', blurAmount: 12, opacity: 95 }, borderBottom: true, shadow: 'lg', scrollTransition: true, animationDuration: 300, mobileBreakpoint: 'lg', hoverEffect: 'color', linkWeight: 'medium', linkStyle: 'normal' };
+  const headerSettings = { ...defaultHeaderSettings, ...header?.headerSettings, ...header?.settings };
+  const secondaryBtnStyle: any = {};
+  if (headerSettings.ctaBgColorSecondary) secondaryBtnStyle.backgroundColor = headerSettings.ctaBgColorSecondary;
+  if (headerSettings.ctaTextColorSecondary) secondaryBtnStyle.color = headerSettings.ctaTextColorSecondary;
+  if (headerSettings.ctaBorderColorSecondary) secondaryBtnStyle.borderColor = headerSettings.ctaBorderColorSecondary;
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [scrollDirection, setScrollDirection] = useState<'up' | 'down'>('up');
+  const [lastScrollY, setLastScrollY] = useState(0);
+  const [currentPage, setCurrentPage] = useState(() => {
+    let path = window.location.pathname.replace(/^\/+/, '').replace(/\/+$/, '').trim().toLowerCase();
+    // Strip any deploy base path segment (e.g. GitHub Pages "/lifeint/...") when the
+    // first path segment does not match a known page slug. This keeps custom-domain
+    // root deploys (Vercel) and subpath deploys (GitHub Pages) on the same code path.
+    try {
+      const first = path.split('/')[0];
+      const knownSlugs = new Set((pages || []).map((p: any) => (p.slug || '').trim().toLowerCase()));
+      if (first && !knownSlugs.has(first) && (pages || []).length > 0) {
+        const rest = path.split('/').slice(1).join('/');
+        if (rest && knownSlugs.has(rest.split('/')[0])) path = rest;
+      }
+    } catch (_e) { /* noop */ }
+    if (path === 'index' || path === 'home') path = '';
+    return path || '';
+  });
+
+  // Multi-page support
+  useEffect(() => { if (pages?.length > 0 && !currentPage) { const h = pages.find((p: any) => p.isHome); setCurrentPage(h?.slug || pages[0]?.slug || ''); } }, [pages]);
+
+  const { activeSections, showHero, activePage } = useMemo(() => {
+    if (isPlatformRoute(currentPage)) return { activePage: null, activeSections: [], showHero: false };
+    if (pages && pages.length > 0) {
+      const normalizedCurrent = (currentPage || '').trim().toLowerCase();
+      const page = pages.find((p: any) => (p.slug || '').trim().toLowerCase() === normalizedCurrent) || pages.find((p: any) => p.isHome);
+      if (page) return { activePage: page, activeSections: page.sections || [], showHero: page.isHome };
+    }
+    return { activePage: null, activeSections: rawSections || [], showHero: true };
+  }, [pages, rawSections, currentPage]);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const y = window.scrollY;
+      setIsScrolled(y > 50);
+      setScrollDirection(y > lastScrollY ? 'down' : 'up');
+      setLastScrollY(y);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [lastScrollY]);
+
+  const scopedThemeStyles = useMemo(() => {
+    const colors = globalStyles?.colors;
+    if (!colors) return {} as React.CSSProperties;
+    return {
+      '--site-primary': colors.primary ? hexToHsl(colors.primary) : undefined,
+      '--site-secondary': colors.secondary ? hexToHsl(colors.secondary) : undefined,
+      '--site-accent': colors.accent ? hexToHsl(colors.accent) : undefined,
+      '--site-background': colors.background ? hexToHsl(colors.background) : undefined,
+      '--site-foreground': colors.text ? hexToHsl(colors.text) : undefined,
+      '--site-muted': colors.muted ? hexToHsl(colors.muted) : undefined,
+    } as React.CSSProperties;
+  }, [globalStyles?.colors]);
+
+  const customColors = globalStyles?.colors;
+  const isDarkTheme = customColors && (isColorDark(customColors.background || '') || isColorDark(customColors.secondary || ''));
+  const primaryBtnStyle = customColors ? { backgroundColor: customColors.primary, color: '#FFFFFF', borderColor: customColors.primary } : undefined;
+  const accentBgStyle = customColors ? { backgroundColor: (customColors.accent || customColors.primary) + '15' } : undefined;
+
+  const handleNavClick = (e: any, href: string) => {
+    if (href.startsWith('/')) {
+      e.preventDefault();
+      const slug = href.slice(1);
+      if (isPlatformRoute(slug) && !slug.startsWith('events')) { window.location.href = platformRouteUrl(slug); return; }
+      setCurrentPage(slug); window.history.pushState({}, '', href || '/'); setMobileMenuOpen(false); window.scrollTo(0,0); return;
+    }
+    if (href.startsWith('#')) { e.preventDefault(); document.querySelector(href)?.scrollIntoView({ behavior: 'smooth' }); setMobileMenuOpen(false); return; }
+    setMobileMenuOpen(false);
+  };
+
+  const onNavigate = (slug: string) => {
+    if (isPlatformRoute(slug) && !slug.startsWith('events')) { window.location.href = platformRouteUrl(slug); return; }
+    setCurrentPage(slug); const newPath = slug && slug !== 'home' ? '/' + slug : '/'; window.history.pushState({}, '', newPath); window.scrollTo(0, 0); setMobileMenuOpen(false);
+  };
+
+  useEffect(() => { const onPop = () => { let path = window.location.pathname; path = path.replace(/^\/+/, '').replace(/\/+$/, '').trim().toLowerCase(); setCurrentPage(path || ''); }; window.addEventListener('popstate', onPop); return () => window.removeEventListener('popstate', onPop); }, []);
+
+  // Dynamic per-page SEO: update document title + meta tags when page changes
+  useEffect(() => {
+    if (!activePage) return;
+    const seo = activePage.seo || {};
+    const siteName = businessName || 'My Website';
+    const pageTitle = seo.metaTitle || (activePage.isHome ? siteName : (activePage.title ? activePage.title + ' | ' + siteName : siteName));
+    document.title = pageTitle;
+    const setMeta = (attr: string, key: string, val: string) => { let el = document.querySelector('meta[' + attr + '="' + key + '"]') as HTMLMetaElement; if (!el) { el = document.createElement('meta'); el.setAttribute(attr, key); document.head.appendChild(el); } el.content = val; };
+    if (seo.metaDescription) { setMeta('name', 'description', seo.metaDescription); setMeta('property', 'og:description', seo.metaDescription); setMeta('name', 'twitter:description', seo.metaDescription); }
+    setMeta('property', 'og:title', pageTitle);
+    setMeta('name', 'twitter:title', pageTitle);
+    if (seo.ogImage) { setMeta('property', 'og:image', seo.ogImage); setMeta('name', 'twitter:image', seo.ogImage); }
+  }, [activePage, businessName]);
+
+  // Merged navigation (primary nav + mega menu enhancements) — shared by header & footer
+  const mergedNav = React.useMemo(() => {
+    const primaryItems = header?.navItems || [];
+    const megaItems = header?.megaMenuItems || [];
+    if (megaItems.length > 0 && primaryItems.length > 0) {
+      return primaryItems.map((nav: any) => {
+        const match = megaItems.find((m: any) => m.label?.toLowerCase().trim() === nav.label?.toLowerCase().trim());
+        return match ? { ...match, href: match.href || nav.href } : nav;
+      });
+    }
+    return primaryItems.length > 0 ? primaryItems : megaItems;
+  }, [header?.navItems, header?.megaMenuItems]);
+
+  // Header helpers
+  const getStickyClass = () => { if (!headerSettings.isSticky) return 'relative'; if (headerSettings.stickyStyle === 'scroll-up') return scrollDirection === 'up' ? 'sticky top-0' : 'relative -translate-y-full'; if (headerSettings.stickyStyle === 'after-hero') return isScrolled ? 'fixed top-0 w-full' : 'absolute top-0 w-full'; return 'sticky top-0'; };
+  const getHeightClass = () => ({ compact: 'py-2', tall: 'py-6', normal: 'py-4' }[headerSettings.height] || 'py-4');
+  const getHeaderLogoHeight = () => { if (header?.logoDimensions?.height) return header.logoDimensions.height; return ({ compact: 56, tall: 96, normal: 80 }[headerSettings.height] || 80); };
+  const getShadowClass = () => { if (isScrolled) return 'shadow-lg'; return ''; };
+  const getActiveBackground = () => { const defaultBg = { type: 'solid', color: '#1F2937', opacity: 100 }; return isScrolled && headerSettings.scrollTransition && headerSettings.scrolledBackground ? (headerSettings.scrolledBackground || defaultBg) : (headerSettings.background || defaultBg); };
+  const getHeaderBackgroundStyle = () => { const bg = getActiveBackground(); const opacity = (bg.opacity ?? 100) / 100; if (bg.type === 'transparent') return { backgroundColor: 'transparent' }; if (bg.type === 'gradient') { const angle = bg.gradientDirection === 'vertical' ? '180deg' : bg.gradientDirection === 'diagonal' ? '135deg' : '90deg'; return { background: 'linear-gradient(' + angle + ', ' + hexToRgba(bg.gradientFrom || '#1F2937', opacity) + ', ' + hexToRgba(bg.gradientTo || '#374151', opacity) + ')' }; } if (bg.type === 'blur') return { backgroundColor: hexToRgba(bg.color || '#1F2937', opacity), backdropFilter: 'blur(' + (bg.blurAmount || 12) + 'px)', WebkitBackdropFilter: 'blur(' + (bg.blurAmount || 12) + 'px)' }; return { backgroundColor: hexToRgba(bg.color || '#1F2937', opacity) }; };
+  const getHeaderTextColor = () => { const bg = getActiveBackground(); if (bg.type === 'transparent') return '#0F172A'; let c = '#1F2937'; if (bg.type === 'solid' || bg.type === 'blur') c = bg.color || '#1F2937'; else if (bg.type === 'gradient') c = bg.gradientFrom || '#1F2937'; return isColorDark(c) ? '#FFFFFF' : '#0F172A'; };
+  const bpClasses = (() => { switch (headerSettings.mobileBreakpoint) { case 'sm': return { show: 'hidden sm:flex', hide: 'sm:hidden' }; case 'md': return { show: 'hidden md:flex', hide: 'md:hidden' }; default: return { show: 'hidden lg:flex', hide: 'lg:hidden' }; } })();
+  const getLinkClasses = () => { const c: string[] = []; switch (headerSettings.hoverEffect) { case 'underline': c.push('nav-link-hover-underline'); break; case 'color': c.push('nav-link-hover-color'); break; case 'background': c.push('nav-link-hover-background'); break; case 'scale': c.push('nav-link-hover-scale'); break; } switch (headerSettings.linkStyle) { case 'uppercase': c.push('nav-link-uppercase'); break; case 'small-caps': c.push('nav-link-small-caps'); break; } switch (headerSettings.linkWeight) { case 'medium': c.push('font-medium'); break; case 'semibold': c.push('font-semibold'); break; case 'bold': c.push('font-bold'); break; } return c.join(' '); };
+  const resolvedFontSize = fontSizeMap[headerSettings.fontSize || 'base'] || fontSizeMap['base'];
+  const navFontFamily = headerSettings.fontFamily || undefined;
+  const navLinkStyle = { fontSize: resolvedFontSize, fontFamily: navFontFamily } as React.CSSProperties;
+  const isCenteredLayout = headerSettings.alignment === 'center' || headerSettings.layout === 'centered';
+
+  // Continuous logo alignment (0=far left, 100=far right). Fallback to legacy enum.
+  const enumToAlign = (v?: string) => (v === 'right' ? 100 : v === 'center' ? 50 : 0);
+  const hasNumericAlignDesktop = typeof headerSettings.logoAlignDesktop === 'number' || typeof header?.logoAlignDesktop === 'number';
+  const hasNumericAlignMobile = typeof headerSettings.logoAlignMobile === 'number' || typeof header?.logoAlignMobile === 'number';
+  const alignDesktop = typeof headerSettings.logoAlignDesktop === 'number'
+    ? Math.max(0, Math.min(100, headerSettings.logoAlignDesktop))
+    : typeof header?.logoAlignDesktop === 'number'
+      ? Math.max(0, Math.min(100, header.logoAlignDesktop))
+      : enumToAlign(headerSettings.logoPositionDesktop || headerSettings.logoPosition);
+  const alignMobile = typeof headerSettings.logoAlignMobile === 'number'
+    ? Math.max(0, Math.min(100, headerSettings.logoAlignMobile))
+    : typeof header?.logoAlignMobile === 'number'
+      ? Math.max(0, Math.min(100, header.logoAlignMobile))
+      : 50;
+  const useNumericAlign = hasNumericAlignDesktop || hasNumericAlignMobile;
+  const showLogoSpacers = headerSettings.layout !== 'vertical' && (headerSettings.layout !== 'centered' || useNumericAlign);
+  const mbp = headerSettings.mobileBreakpoint === 'sm' ? 'sm' : headerSettings.mobileBreakpoint === 'md' ? 'md' : 'lg';
+  const logoMaxWidthClassMap = {
+    sm: 'max-w-[55vw] sm:max-w-none',
+    md: 'max-w-[55vw] md:max-w-none',
+    lg: 'max-w-[55vw] md:max-w-[40vw] lg:max-w-none',
+  } as const;
+  const logoMaxWidthClass = logoMaxWidthClassMap[mbp];
+
+  // Continuous nav alignment (0=left, 50=center, 100=right). Default 100 preserves legacy right-aligned menu.
+  const normalizeNavAlign = (v: number) => {
+    const c = Math.max(0, Math.min(100, v));
+    if (c <= 10) return 0;
+    if (c >= 90) return 100;
+    return Math.abs(c - 50) <= 5 ? 50 : c;
+  };
+  const hasNumericNavAlign = typeof headerSettings.navAlignDesktop === 'number';
+  const navAlignDesktop = hasNumericNavAlign ? normalizeNavAlign(headerSettings.navAlignDesktop as number) : 100;
+  const navJustifyClass = navAlignDesktop === 0 ? 'justify-start' : navAlignDesktop === 50 ? 'justify-center' : 'justify-end';
+
+  // CTA visibility per breakpoint (matches editor's headerSettings.ctaHideOn)
+  const ctaHideOnArr = Array.isArray(headerSettings?.ctaHideOn) ? headerSettings.ctaHideOn : [];
+  const ctaHideClass = [
+    ctaHideOnArr.includes('mobile')  && 'max-md:!hidden',
+    ctaHideOnArr.includes('tablet')  && 'max-lg:md:!hidden',
+    ctaHideOnArr.includes('desktop') && 'lg:!hidden',
+  ].filter(Boolean).join(' ');
+  const ctaHiddenOnMobile = ctaHideOnArr.includes('mobile');
+
+  return (
+    <div className="min-h-screen site-theme-scope" style={scopedThemeStyles}>
+      {/* Header */}
+      {header && (
+        <header className={cn('z-50 transition-all', getStickyClass(), getShadowClass(), headerSettings.borderBottom && 'border-b border-border')}
+          style={{ ...getHeaderBackgroundStyle(), color: getHeaderTextColor(), transitionDuration: (headerSettings.animationDuration || 300) + 'ms' }}>
+          <div className="container mx-auto relative" style={{ padding: (headerSettings.paddingY ?? 8) + 'px ' + (headerSettings.paddingX ?? 24) + 'px' }}>
+          <div className={cn('flex items-center relative',
+              ({ compact: 'h-14', tall: 'h-24', normal: 'h-20' }[headerSettings.height] || 'h-20'),
+              useNumericAlign ? 'justify-start gap-4' :
+              headerSettings.layout === 'centered' ? 'justify-center gap-8' :
+              headerSettings.alignment === 'left' ? 'justify-start gap-8' :
+              headerSettings.alignment === 'center' ? 'justify-center gap-8' :
+              headerSettings.alignment === 'right' ? 'justify-end gap-8' :
+              'justify-between'
+            )}>
+            {showLogoSpacers && <div aria-hidden="true" className={cn(bpClasses.hide, 'order-2')} style={{ flexGrow: Math.max(0, alignMobile), flexBasis: 0, flexShrink: 1 }} />}
+            {showLogoSpacers && <div aria-hidden="true" className={cn(bpClasses.show.replace('flex','block'), 'order-2')} style={{ flexGrow: alignDesktop, flexBasis: 0, flexShrink: 1 }} />}
+            <div className={cn(
+              "flex-shrink-0 cursor-pointer",
+              headerSettings.layout === 'centered' && !useNumericAlign && 'order-[3] mx-auto',
+              headerSettings.showLogo === false && 'hidden',
+              'order-[3]',
+            )}
+            onClick={() => {
+              const link = (header.logoLink || '').trim();
+              if (link && (link.startsWith('http://') || link.startsWith('https://'))) {
+                window.location.assign(link);
+              } else if (link) {
+                onNavigate && onNavigate(link.charAt(0) === '/' ? link.slice(1) : link);
+              } else {
+                onNavigate && onNavigate('home');
+              }
+            }}>
+              {header.logo ? (
+                <div className={logoMaxWidthClass} style={{ height: getHeaderLogoHeight() + 'px' }}>
+                  <img src={header.logo} alt={businessName} style={{ height: '100%', width: 'auto', objectFit: 'contain', objectPosition: 'left center', transform: 'scale(1.18)', transformOrigin: 'left center', display: 'block' }} />
+                </div>
+              ) : (
+                <span className="text-xl sm:text-2xl font-bold truncate max-w-[180px] sm:max-w-none" style={{ color: 'inherit' }}>{header.logoText || businessName}</span>
+              )}
+            </div>
+            {/* Right spacers removed — nav/CTA stay pinned right via flex-1 below */}
+            {/* Mobile-only right spacer: sized as (100 - alignMobile) so the logo lands at alignMobile% of the row even when the absolute fallback (mobileLogoStyle) is not applied. */}
+            <div aria-hidden="true" className={cn(bpClasses.hide, 'order-[4]')} style={{ flexGrow: Math.max(1, 100 - alignMobile), flexBasis: 0, flexShrink: 1 }} />
+            <div className={cn(bpClasses.show, 'items-center gap-6 order-[5]', isCenteredLayout && !useNumericAlign && 'flex-1 justify-center', useNumericAlign && 'flex-1', useNumericAlign && navJustifyClass)}>
+              {(() => {
+                const merged = mergedNav;
+                return merged.length > 0 ? (
+                <nav className="flex items-center" style={{ gap: (headerSettings.itemSpacing ?? 24) + 'px' }}>
+                  {merged.map((item: any, i: number) =>
+                    (item.type === 'simple-dropdown' && item.children?.length > 0) || item.children?.length > 0 ? (
+                      <SimpleDropdown key={item.id || i} item={item} headerSettings={headerSettings} onNavigate={(href: string) => { if (href.startsWith('/')) onNavigate(href.slice(1)); else if (href.startsWith('#')) document.querySelector(href)?.scrollIntoView({ behavior: 'smooth' }); else window.location.href = href; }} linkClasses={getLinkClasses()} textColor={getHeaderTextColor()} />
+                    ) : (
+                      <a key={item.id || i} href={item.href || '#'} onClick={(e: any) => handleNavClick(e, item.href || '#')}
+                        className={cn('rounded-md transition-colors', getLinkClasses())} style={navLinkStyle}>
+                        {item.icon && <DynamicIcon name={item.icon} className="w-4 h-4 mr-1 inline" />}
+                        {item.label}
+                      </a>
+                    )
+                  )}
+                </nav>
+                ) : null;
+              })()}
+            </div>
+            {header.ctaButton && headerSettings?.showCtaButton !== false && (header.ctaButton.href ? <a href={header.ctaButton.href} target={header.ctaButton.href.startsWith('http') ? '_blank' : undefined} rel={header.ctaButton.href.startsWith('http') ? 'noopener noreferrer' : undefined} className={cn('order-[7]', ctaHideClass)}><Button size="sm" style={primaryBtnStyle} className="font-semibold min-h-[40px]">{header.ctaButton.text}</Button></a> : <Button size="sm" style={primaryBtnStyle} className={cn('font-semibold min-h-[40px] order-[7]', ctaHideClass)}>{header.ctaButton.text}</Button>)}
+            {header.ctaButtonSecondary && headerSettings?.showCtaButtonSecondary === true && (header.ctaButtonSecondary.href ? <a href={header.ctaButtonSecondary.href} target={header.ctaButtonSecondary.href.startsWith('http') ? '_blank' : undefined} rel={header.ctaButtonSecondary.href.startsWith('http') ? 'noopener noreferrer' : undefined} className={cn('order-[8]', ctaHideClass)}><Button size="sm" variant={(headerSettings.ctaStyleSecondary || 'outline') === 'outline' ? 'outline' : 'default'} style={secondaryBtnStyle} className="font-semibold min-h-[40px] ml-2">{header.ctaButtonSecondary.text}</Button></a> : <Button size="sm" variant={(headerSettings.ctaStyleSecondary || 'outline') === 'outline' ? 'outline' : 'default'} style={secondaryBtnStyle} className={cn('font-semibold min-h-[40px] ml-2 order-[8]', ctaHideClass)}>{header.ctaButtonSecondary.text}</Button>)}
+            <button className={cn('p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-md transition-colors order-[6]', bpClasses.hide)} style={{ color: 'inherit' }} onClick={() => setMobileMenuOpen(!mobileMenuOpen)} aria-label="Toggle menu">
+              <Menu className="w-6 h-6" style={{ color: 'inherit' }} />
+            </button>
+          </div>
+          </div>
+        </header>
+      )}
+
+      {/* Mobile Menu Drawer */}
+      {mobileMenuOpen && (
+        <>
+          <div className="fixed inset-0 z-[60] bg-black/50 transition-opacity duration-300" onClick={() => setMobileMenuOpen(false)} />
+          <div className="fixed top-0 right-0 h-full w-[280px] sm:w-[320px] z-[70] text-white flex flex-col shadow-2xl animate-slide-in-right" style={getHeaderBackgroundStyle()}>
+            <div className="flex items-center justify-between p-4 border-b border-white/10">
+              <div className="flex items-center">
+                {header?.logo ? <img src={header.logo} alt={businessName} style={{ height: getHeaderLogoHeight() + 'px', width: 'auto', objectFit: 'contain', transform: 'scale(1.18)', transformOrigin: 'left center', display: 'block' }} /> : <span className="text-lg font-bold">{header?.logoText || businessName}</span>}
+              </div>
+              <button onClick={() => setMobileMenuOpen(false)} className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center hover:opacity-70 transition-opacity" aria-label="Close menu"><X className="w-6 h-6" /></button>
+            </div>
+            <nav className="flex flex-col px-6 flex-1 overflow-y-auto">
+              {(() => {
+                const merged = mergedNav;
+                return merged.length > 0 ? (
+                <Accordion type="single" collapsible className="w-full">
+                  {merged.map((item: any, i: number) =>
+                    item.children?.length > 0 ? (
+                      <AccordionItem key={item.id || i} value={item.id || 'nav-' + i} className="border-b border-white/10">
+                        <AccordionTrigger className="py-4 text-base sm:text-lg font-medium hover:no-underline opacity-90 hover:opacity-100">
+                          <span className="flex items-center gap-2">{item.icon && <DynamicIcon name={item.icon} className="w-5 h-5" />}{item.label}</span>
+                        </AccordionTrigger>
+                        <AccordionContent className="pb-4">
+                          <div className="space-y-1 pl-4">
+                            {item.children.map((child: any, ci: number) =>
+                              child.children?.length > 0 ? (
+                                <Accordion key={ci} type="single" collapsible className="w-full">
+                                  <AccordionItem value={'sub-' + (item.id || i) + '-' + ci} className="border-b border-white/5">
+                                    <AccordionTrigger className="py-2.5 text-sm font-medium hover:no-underline opacity-80 hover:opacity-100">
+                                      <span className="flex items-center gap-2">{child.icon && <DynamicIcon name={child.icon} className="w-4 h-4" />}{child.label}</span>
+                                    </AccordionTrigger>
+                                    <AccordionContent className="pb-2">
+                                      <div className="space-y-1 pl-4">
+                                        {child.children.map((grandchild: any, gci: number) => (
+                                          <a key={gci} href={grandchild.href} onClick={(e: any) => handleNavClick(e, grandchild.href)} className="block py-2 text-sm opacity-70 hover:opacity-100 transition-opacity">
+                                            {grandchild.icon && <DynamicIcon name={grandchild.icon} className="w-3.5 h-3.5 mr-2 inline" />}{grandchild.label}
+                                          </a>
+                                        ))}
+                                      </div>
+                                    </AccordionContent>
+                                  </AccordionItem>
+                                </Accordion>
+                              ) : (
+                                <a key={ci} href={child.href} onClick={(e: any) => handleNavClick(e, child.href)} className="block py-2.5 text-sm opacity-80 hover:opacity-100 transition-opacity">
+                                  {child.icon && <DynamicIcon name={child.icon} className="w-4 h-4 mr-2 inline" />}{child.label}
+                                </a>
+                              )
+                            )}
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    ) : (
+                      <a key={item.id || i} href={item.href || '#'} onClick={(e: any) => handleNavClick(e, item.href || '#')}
+                        className="py-4 text-base sm:text-lg font-medium border-b border-white/10 flex items-center transition-opacity opacity-90 hover:opacity-100">
+                        {item.icon && <DynamicIcon name={item.icon} className="w-5 h-5 mr-2" />}{item.label}
+                      </a>
+                    )
+                  )}
+                </Accordion>
+                ) : null;
+              })()}
+            </nav>
+            {header?.ctaButton && headerSettings?.showCtaButton !== false && !ctaHiddenOnMobile && (
+              <div className="p-6 border-t border-white/10">{header.ctaButton.href ? <a href={header.ctaButton.href} target={header.ctaButton.href.startsWith('http') ? '_blank' : undefined} rel={header.ctaButton.href.startsWith('http') ? 'noopener noreferrer' : undefined}><Button size="lg" style={primaryBtnStyle} className="font-semibold w-full min-h-[52px]">{header.ctaButton.text}</Button></a> : <Button size="lg" style={primaryBtnStyle} className="font-semibold w-full min-h-[52px]">{header.ctaButton.text}</Button>}</div>
+            )}
+            {header?.ctaButtonSecondary && headerSettings?.showCtaButtonSecondary === true && !ctaHiddenOnMobile && (
+              <div className="px-6 pb-6">{header.ctaButtonSecondary.href ? <a href={header.ctaButtonSecondary.href} target={header.ctaButtonSecondary.href.startsWith('http') ? '_blank' : undefined} rel={header.ctaButtonSecondary.href.startsWith('http') ? 'noopener noreferrer' : undefined}><Button size="lg" variant={(headerSettings.ctaStyleSecondary || 'outline') === 'outline' ? 'outline' : 'default'} style={secondaryBtnStyle} className="font-semibold w-full min-h-[52px]">{header.ctaButtonSecondary.text}</Button></a> : <Button size="lg" variant={(headerSettings.ctaStyleSecondary || 'outline') === 'outline' ? 'outline' : 'default'} style={secondaryBtnStyle} className="font-semibold w-full min-h-[52px]">{header.ctaButtonSecondary.text}</Button>}</div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Hero */}
+      {showHero && hero && <MultiSlideHero heroData={hero} />}
+
+      {/* Page Title for non-home pages */}
+      {!showHero && activePage && !activePage.hideTitle && (
+        <section className="py-10 sm:py-12 px-4 sm:px-6 bg-muted/30" style={accentBgStyle}>
+          <div className="container mx-auto max-w-4xl text-center">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground">{activePage.title}</h1>
+          </div>
+        </section>
+      )}
+
+      {/* Live platform content remains inside the exported website frame. */}
+      {currentPage.startsWith('events/') && <EventRuntime path={currentPage} onNavigate={onNavigate} />}
+
+      {/* Dynamic Sections */}
+      {!isPlatformRoute(currentPage) && activeSections.map((section: any, index: number) => {
+        const bgStyle = section.settings?.background?.type === 'color' ? { backgroundColor: section.settings.background.value } : section.settings?.background?.type === 'gradient' ? { background: section.settings.background.value } : undefined;
+        const isImageBg = section.settings?.background?.type === 'image';
+        const textClass = isImageBg ? 'text-white' : '';
+        const sectionId = section.settings?.anchorId || section.anchorId || slugify(section.title) || (section.type + '-' + index);
+
+        // AI-custom sections: render saved customHtml directly via iframe (matches platform preview)
+        if (section.settings?.layoutVariant === 'ai-custom' && section.settings?.customHtml) {
+          const iframeId = 'ai-section-' + section.type + '-' + index;
+          const resizeScript = '<script>function _getH(){var b=document.body,d=document.documentElement,h=Math.max(b.scrollHeight||0,b.offsetHeight||0,d.scrollHeight||0,d.offsetHeight||0);var els=document.body.querySelectorAll("*");for(var i=0;i<els.length;i++){var r=els[i].getBoundingClientRect();var bot=r.bottom;if(bot>h)h=Math.ceil(bot)}return Math.ceil(h)}function _postH(){window.parent.postMessage({type:"iframe-resize",height:_getH(),id:"' + iframeId + '"},"*")}window.addEventListener("load",function(){_postH();setTimeout(_postH,500);setTimeout(_postH,1500)});new ResizeObserver(_postH).observe(document.body);document.addEventListener("DOMContentLoaded",_postH)<\/script>';
+          return (
+            <section key={index} id={sectionId}>
+              <iframe id={iframeId}
+                srcDoc={'<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><script src="https://cdn.tailwindcss.com"><\/script><style>body{margin:0;font-family:system-ui,-apple-system,sans-serif;overflow-x:hidden}*{box-sizing:border-box}img{max-width:100%;height:auto}</style></head><body>' + section.settings.customHtml + resizeScript + '</body></html>'}
+                className="w-full border-0" style={{ overflow: 'hidden', minHeight: '200px' }}
+                sandbox="allow-scripts allow-same-origin allow-popups" title={section.type + ' section'} scrolling="no" />
+            </section>
+          );
+        }
+
+        switch (section.type) {
+          case 'about': {
+            const variant = section.settings?.layoutVariant || 'about-image-left';
+            const isRight = variant === 'about-image-right';
+            const isCentered = variant === 'about-centered' || variant === 'hero-centered';
+            const isSplit = variant === 'hero-split';
+            const isSplitCards = variant === 'about-split-cards';
+            const isFullwidth = variant === 'about-fullwidth';
+
+            // Build per-device responsive image CSS (aspect ratio + fit + max-height).
+            const buildResponsiveImage = (key: string) => {
+              const cls = 'rsi-' + String(key).replace(/[^a-zA-Z0-9_-]/g, '');
+              const ovr = section.settings?.responsiveOverrides || {};
+              const base = { ratio: '16/9', fit: 'cover', maxH: '' };
+              const resolve = (d: any) => ({
+                ratio: (d && d.imageAspectRatio) || base.ratio,
+                fit: (d && d.imageFit) || base.fit,
+                maxH: (d && d.imageMaxHeight) || base.maxH,
+              });
+              const m = resolve(ovr.mobile);
+              const t = resolve(ovr.tablet);
+              const dk = resolve(ovr.desktop);
+              const block = (v: any) => {
+                const wrap = [];
+                const im = [];
+                if (v.ratio && v.ratio !== 'auto') {
+                  wrap.push('aspect-ratio: ' + v.ratio + ';');
+                  im.push('width: 100%; height: 100%;');
+                } else {
+                  wrap.push('aspect-ratio: auto;');
+                  im.push('width: 100%; height: auto;');
+                }
+                if (v.maxH) wrap.push('max-height: ' + v.maxH + ';');
+                im.push('object-fit: ' + v.fit + ';');
+                return '.' + cls + ' { ' + wrap.join(' ') + ' } .' + cls + ' img { ' + im.join(' ') + ' }';
+              };
+              const styleTag = '@media (max-width: 767px) { ' + block(m) + ' } '
+                + '@media (min-width: 768px) and (max-width: 1023px) { ' + block(t) + ' } '
+                + '@media (min-width: 1024px) { ' + block(dk) + ' }';
+              return { cls, styleTag };
+            };
+
+            if (isFullwidth) {
+              const rip = buildResponsiveImage('about-fullwidth-' + index);
+              return (
+                <section key={index} id={sectionId} className="py-16 sm:py-20 lg:py-28 px-4 sm:px-6 bg-background" style={bgStyle}>
+                  <div className={'container mx-auto ' + (section.settings?.fullWidth ? 'max-w-none' : 'max-w-4xl')}>
+                    {section.image && (
+                      <ScrollReveal animation="blur-in" delay={100} easing="spring">
+                        <div className={'relative mb-8 sm:mb-12 rounded-2xl overflow-hidden shadow-xl ' + rip.cls}>
+                          <style dangerouslySetInnerHTML={{ __html: rip.styleTag }} />
+                          <img src={section.image} alt={section.title} loading="lazy" sizes="100vw" />
+                        </div>
+                      </ScrollReveal>
+                    )}
+                    <ScrollReveal animation="fade-up" delay={200} easing="ease-out">
+                      <div className={'max-w-3xl mx-auto ' + textClass}>
+                        {!section.settings?.hideTitle && <h2 className={'text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-bold mb-6 sm:mb-8 ' + textClass}>{section.title}</h2>}
+                        <div className={'text-base sm:text-lg lg:text-xl leading-relaxed whitespace-pre-line ' + (isImageBg ? 'text-white/90' : 'text-muted-foreground')} dangerouslySetInnerHTML={{ __html: cleanHtml(section.body || '') }} />
+                      </div>
+                    </ScrollReveal>
+                  </div>
+                </section>
+              );
+            }
+
+            if (isCentered) {
+              return (
+                <section key={index} id={sectionId} className="py-16 sm:py-20 lg:py-28 px-4 sm:px-6 bg-background" style={bgStyle}>
+                  <div className="container mx-auto max-w-4xl text-center">
+                    {section.image && <ScrollReveal animation="blur-in" delay={100}><img src={section.image} alt={section.title} className="rounded-2xl shadow-xl w-full h-auto object-cover aspect-video mb-8" /></ScrollReveal>}
+                    <ScrollReveal animation="fade-up" delay={200}>
+                      {!section.settings?.hideTitle && <h2 className={'text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-bold mb-6 sm:mb-8 ' + textClass}>{section.title}</h2>}
+                      <div className={'text-base sm:text-lg lg:text-xl leading-relaxed whitespace-pre-line ' + (isImageBg ? 'text-white/90' : 'text-muted-foreground')} dangerouslySetInnerHTML={{ __html: cleanHtml(section.body || '') }} />
+                      {(section.buttonText || section.ctaText) && (() => { const btnLink = section.buttonLink || section.ctaLink || '#'; const isExt = btnLink.startsWith('http'); return (<a href={btnLink} target={isExt ? '_blank' : undefined} rel={isExt ? 'noopener noreferrer' : undefined}><Button size="lg" style={primaryBtnStyle} className="mt-6">{section.buttonText || section.ctaText}</Button></a>); })()}
+                    </ScrollReveal>
+                  </div>
+                </section>
+              );
+            }
+
+            if (isSplit) {
+              return (
+                <section key={index} id={sectionId} className="min-h-[60vh] flex items-center bg-background" style={bgStyle}>
+                  <div className="container mx-auto max-w-6xl px-4 sm:px-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
+                      <ScrollReveal animation="fade-up" delay={100}>
+                        <div>
+                          {!section.settings?.hideTitle && <h2 className={'text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-bold mb-6 sm:mb-8 ' + textClass}>{section.title}</h2>}
+                          <div className={'text-base sm:text-lg lg:text-xl leading-relaxed whitespace-pre-line ' + (isImageBg ? 'text-white/90' : 'text-muted-foreground')} dangerouslySetInnerHTML={{ __html: cleanHtml(section.body || '') }} />
+                          {(section.buttonText || section.ctaText) && (() => { const btnLink = section.buttonLink || section.ctaLink || '#'; const isExt = btnLink.startsWith('http'); return (<a href={btnLink} target={isExt ? '_blank' : undefined} rel={isExt ? 'noopener noreferrer' : undefined}><Button size="lg" style={primaryBtnStyle} className="mt-6">{section.buttonText || section.ctaText}</Button></a>); })()}
+                        </div>
+                      </ScrollReveal>
+                      {section.image && <ScrollReveal animation="blur-in" delay={200}><img src={section.image} alt={section.title} className="rounded-2xl shadow-xl w-full h-auto object-cover aspect-[4/3]" /></ScrollReveal>}
+                    </div>
+                  </div>
+                </section>
+              );
+            }
+
+            if (isSplitCards) {
+              return (
+                <section key={index} id={sectionId} className="py-16 sm:py-20 lg:py-28 px-4 sm:px-6 bg-background" style={bgStyle}>
+                  <div className="container mx-auto max-w-6xl">
+                    {!section.settings?.hideTitle && <ScrollReveal animation="blur-in"><h2 className={'text-2xl sm:text-3xl lg:text-4xl font-bold text-center mb-10 sm:mb-14 ' + textClass}>{section.title}</h2></ScrollReveal>}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
+                      {section.image && <ScrollReveal animation="blur-in" delay={100}><div className="bg-card border border-border rounded-2xl overflow-hidden"><img src={section.image} alt={section.title} className="w-full h-full object-cover aspect-[4/3]" /></div></ScrollReveal>}
+                      <ScrollReveal animation="fade-up" delay={200}>
+                        <div className="bg-card border border-border rounded-2xl p-6 sm:p-8 flex flex-col justify-center h-full">
+                          <div className={'text-base sm:text-lg leading-relaxed whitespace-pre-line ' + (isImageBg ? 'text-white/90' : 'text-muted-foreground')} dangerouslySetInnerHTML={{ __html: cleanHtml(section.body || '') }} />
+                        </div>
+                      </ScrollReveal>
+                    </div>
+                  </div>
+                </section>
+              );
+            }
+
+            return (
+              <section key={index} id={sectionId} className="py-16 sm:py-20 lg:py-28 px-4 sm:px-6 bg-background" style={bgStyle}>
+                <div className="container mx-auto max-w-6xl">
+                  <div className={'grid grid-cols-1 ' + (section.image ? 'lg:grid-cols-2 gap-8 lg:gap-12 items-center' : '')}>
+                    {section.image && !isRight && (
+                      <ScrollReveal animation="blur-in" delay={100}>
+                        <div className="relative"><img src={section.image} alt={section.title} className="rounded-2xl shadow-xl w-full h-auto object-cover aspect-[4/3]" /></div>
+                      </ScrollReveal>
+                    )}
+                    <ScrollReveal animation="fade-up" delay={200}>
+                      <div className={section.image ? 'text-center lg:text-left' : 'max-w-4xl mx-auto text-center'}>
+                        {!section.settings?.hideTitle && <h2 className={'text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-bold mb-6 sm:mb-8 ' + textClass}>{section.title}</h2>}
+                        <div className={'text-base sm:text-lg lg:text-xl leading-relaxed whitespace-pre-line ' + (isImageBg ? 'text-white/90' : 'text-muted-foreground')} dangerouslySetInnerHTML={{ __html: cleanHtml(section.body || '') }} />
+                        {(section.buttonText || section.ctaText) && (() => { const btnLink = section.buttonLink || section.ctaLink || '#'; const isExt = btnLink.startsWith('http'); return (<a href={btnLink} target={isExt ? '_blank' : undefined} rel={isExt ? 'noopener noreferrer' : undefined}><Button size="lg" style={primaryBtnStyle} className="mt-6">{section.buttonText || section.ctaText}</Button></a>); })()}
+                      </div>
+                    </ScrollReveal>
+                    {section.image && isRight && (
+                      <ScrollReveal animation="blur-in" delay={200}>
+                        <div className="relative"><img src={section.image} alt={section.title} className="rounded-2xl shadow-xl w-full h-auto object-cover aspect-[4/3]" /></div>
+                      </ScrollReveal>
+                    )}
+                  </div>
+                </div>
+              </section>
+            );
+          }
+
+          case 'services':
+          case 'features':
+            return (
+              <section key={index} id={sectionId} className="py-16 sm:py-20 lg:py-28 px-4 sm:px-6 bg-muted/30" style={bgStyle || accentBgStyle}>
+                <div className="container mx-auto max-w-6xl">
+                  <ScrollReveal animation="blur-in" duration={800}>
+                    {!section.settings?.hideTitle && <h2 className={'text-2xl sm:text-3xl lg:text-4xl font-bold text-center mb-4 sm:mb-6 ' + textClass}>{section.title}</h2>}
+                    {section.body && <div className={'text-center mb-10 sm:mb-14 max-w-2xl mx-auto text-base sm:text-lg ' + (isImageBg ? 'text-white/80' : 'text-muted-foreground')} dangerouslySetInnerHTML={{ __html: cleanHtml(section.body) }} />}
+                  </ScrollReveal>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 lg:gap-10">
+                    {section.items?.map((item: any, i: number) => (
+                      <ScrollReveal key={i} animation="flip-up" delay={i * 80}>
+                        <div className="bg-card border border-border rounded-2xl overflow-hidden hover:shadow-xl hover:-translate-y-2 transition-all duration-300 h-full flex flex-col">
+                          {item.image && <div className="aspect-[16/10] overflow-hidden bg-muted"><img src={item.image} alt={item.name || item.title || ''} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" /></div>}
+                          <div className="p-6 sm:p-8 flex-1 flex flex-col">
+                            {!item.image && (
+                              <div className="w-14 h-14 sm:w-16 sm:h-16 bg-primary/10 rounded-xl flex items-center justify-center mb-4" style={customColors ? { backgroundColor: customColors.primary + '20' } : undefined}>
+                                {item.icon ? <span className="text-2xl sm:text-3xl">{item.icon}</span> : <Check className="h-7 w-7 sm:h-8 sm:w-8 text-primary" style={customColors ? { color: customColors.primary } : undefined} />}
+                              </div>
+                            )}
+                            <h3 className="font-semibold text-lg sm:text-xl mb-3">{item.name || item.title}</h3>
+                            <div className="text-muted-foreground text-sm sm:text-base flex-1 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: cleanHtml(item.description || item.body || '') }} />
+                          </div>
+                        </div>
+                      </ScrollReveal>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            );
+
+          case 'testimonials':
+            return (
+              <section key={index} id={sectionId} className="py-16 sm:py-20 lg:py-28 px-4 sm:px-6 bg-gradient-to-br from-primary/5 via-background to-secondary/5" style={bgStyle}>
+                <div className="container mx-auto max-w-6xl">
+                  <ScrollReveal animation="blur-in" duration={800}>
+                    {!section.settings?.hideTitle && <h2 className={'text-2xl sm:text-3xl lg:text-4xl font-bold text-center mb-10 sm:mb-14 ' + textClass}>{section.title}</h2>}
+                  </ScrollReveal>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+                    {section.quotes?.map((quote: any, i: number) => (
+                      <ScrollReveal key={i} animation="scale" delay={i * 100}>
+                        <div className="bg-card border border-border rounded-2xl p-6 sm:p-8 relative h-full shadow-sm">
+                          <Quote className="h-8 w-8 sm:h-10 sm:w-10 text-primary/20 absolute top-4 right-4 sm:top-6 sm:right-6" />
+                          <div className="flex gap-1.5 mb-4 sm:mb-5">{[...Array(5)].map((_, j) => <Star key={j} className="h-5 w-5 sm:h-6 sm:w-6 fill-amber-400 text-amber-400" />)}</div>
+                          <p className="text-muted-foreground mb-5 sm:mb-6 italic text-base sm:text-lg leading-relaxed">"{quote.quote}"</p>
+                          <div className="flex items-center gap-3 sm:gap-4">
+                            {quote.image ? <img src={quote.image} alt={quote.name} className="w-12 h-12 sm:w-14 sm:h-14 rounded-full object-cover" /> : <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-primary/20 flex items-center justify-center text-primary font-semibold text-lg">{quote.name?.charAt(0) || 'A'}</div>}
+                            <div><p className="font-semibold text-base sm:text-lg">{quote.name}</p><p className="text-sm sm:text-base text-muted-foreground">{quote.role}</p></div>
+                          </div>
+                        </div>
+                      </ScrollReveal>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            );
+
+          case 'faq':
+            return (
+              <section key={index} id={sectionId} className="py-16 sm:py-20 lg:py-28 px-4 sm:px-6 bg-muted/30" style={bgStyle || accentBgStyle}>
+                <div className="container mx-auto max-w-3xl">
+                  <ScrollReveal animation="blur-in" duration={800}>
+                    {!section.settings?.hideTitle && <h2 className={'text-2xl sm:text-3xl lg:text-4xl font-bold text-center mb-10 sm:mb-14 ' + textClass}>{section.title}</h2>}
+                  </ScrollReveal>
+                  <ScrollReveal animation="fade-up" delay={150}>
+                    <div className="divide-y divide-border bg-card rounded-2xl border border-border overflow-hidden">
+                      <Accordion type="single" collapsible className="divide-y divide-border">
+                        {section.items?.map((item: any, i: number) => (
+                          <ScrollReveal key={i} animation="slide-right" delay={i * 60}>
+                            <AccordionItem value={'faq-' + i} className="border-0 px-6 sm:px-8">
+                              <AccordionTrigger className="text-left font-semibold text-base sm:text-lg py-6 min-h-[64px] hover:no-underline">{item.question}</AccordionTrigger>
+                              <AccordionContent className="text-muted-foreground text-base pb-6">{item.answer}</AccordionContent>
+                            </AccordionItem>
+                          </ScrollReveal>
+                        ))}
+                      </Accordion>
+                    </div>
+                  </ScrollReveal>
+                </div>
+              </section>
+            );
+
+          case 'gallery':
+            return (
+              <section key={index} id={sectionId} className="py-20 sm:py-24 lg:py-32 px-4 sm:px-6 bg-background" style={bgStyle}>
+                <div className="container mx-auto max-w-6xl">
+                  <ScrollReveal animation="blur-in" duration={800}>
+                    {!section.settings?.hideTitle && <h2 className={'text-2xl sm:text-3xl lg:text-4xl font-bold text-center mb-10 sm:mb-14 ' + textClass}>{section.title}</h2>}
+                  </ScrollReveal>
+                  <GalleryGrid images={section.images || []} columnLayout={section.settings?.columnLayout} />
+                </div>
+              </section>
+            );
+
+          case 'team':
+            return (
+              <section key={index} id={sectionId} className="py-16 sm:py-20 lg:py-28 px-4 sm:px-6 bg-muted/30" style={bgStyle || accentBgStyle}>
+                <div className="container mx-auto max-w-6xl">
+                  <ScrollReveal animation="blur-in" duration={800}>
+                    {!section.settings?.hideTitle && <h2 className={'text-2xl sm:text-3xl lg:text-4xl font-bold text-center mb-4 sm:mb-6 ' + textClass}>{section.title}</h2>}
+                    {section.body && <div className={'text-center mb-10 sm:mb-14 max-w-2xl mx-auto text-sm sm:text-base ' + (isImageBg ? 'text-white/80' : 'text-muted-foreground')} dangerouslySetInnerHTML={{ __html: cleanHtml(section.body) }} />}
+                  </ScrollReveal>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 lg:gap-10">
+                    {section.teamMembers?.map((member: any, i: number) => (
+                      <ScrollReveal key={i} animation="zoom-in" delay={i * 100}>
+                        <div className="bg-card border border-border rounded-2xl overflow-hidden text-center h-full flex flex-col">
+                          <div className="aspect-square overflow-hidden">
+                            {member.image ? <img src={member.image} alt={member.name} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center"><span className="text-5xl sm:text-6xl lg:text-7xl font-bold text-primary/30">{member.name?.charAt(0)}</span></div>}
+                          </div>
+                          <div className="p-6 sm:p-8 flex-1">
+                            <h3 className="font-semibold text-xl sm:text-2xl mb-2">{member.name}</h3>
+                            <p className="text-primary mb-3 text-base sm:text-lg" style={customColors ? { color: customColors.primary } : undefined}>{member.role}</p>
+                            {member.bio && <p className="text-muted-foreground text-sm sm:text-base">{member.bio}</p>}
+                          </div>
+                        </div>
+                      </ScrollReveal>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            );
+
+          case 'cta':
+            return (
+              <section key={index} id={sectionId} className="py-20 sm:py-24 lg:py-32 px-4 sm:px-6 relative overflow-hidden"
+                style={bgStyle || { background: 'linear-gradient(135deg, ' + (customColors?.primary || '#8B5CF6') + ', ' + (customColors?.secondary || customColors?.primary || '#7C3AED') + ')' }}>
+                <ScrollReveal animation="scale">
+                  <div className="container mx-auto max-w-4xl text-center relative z-10">
+                    {section.image && <div className="mb-8 flex justify-center"><img src={section.image} alt={section.title || ''} className="rounded-xl max-h-[400px] w-full object-cover" loading="lazy" /></div>}
+                    {!section.settings?.hideTitle && <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4 sm:mb-6 text-white">{section.title}</h2>}
+                    {section.body && <div className="text-lg sm:text-xl lg:text-2xl text-white/90 mb-8 sm:mb-10 max-w-2xl mx-auto" dangerouslySetInnerHTML={{ __html: cleanHtml(section.body) }} />}
+                    {(() => { const btnLink = section.buttonLink || section.ctaLink || '#'; const isExt = btnLink.startsWith('http'); return (
+                      <a href={btnLink} target={isExt ? '_blank' : undefined} rel={isExt ? 'noopener noreferrer' : undefined}>
+                        <Button size="lg" className="bg-white text-gray-900 hover:bg-gray-100 gap-2 w-full sm:w-auto min-h-[56px] px-10 text-lg font-bold rounded-xl shadow-2xl">
+                          {section.buttonText || section.ctaText || 'Get Started'} <ArrowRight className="h-5 w-5" />
+                        </Button>
+                      </a>
+                    ); })()}
+                  </div>
+                </ScrollReveal>
+              </section>
+            );
+
+          case 'contact':
+            return (
+              <section key={index} id={sectionId} className="py-16 sm:py-20 lg:py-28 px-4 sm:px-6 bg-muted/30" style={accentBgStyle}>
+                <div className="container mx-auto max-w-5xl">
+                  {!section.settings?.hideTitle && <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-center mb-3 sm:mb-4">{section.title || "Contact Us"}</h2>}
+                  {section.body && <div className="text-center text-muted-foreground mb-8 sm:mb-12 text-sm sm:text-base max-w-2xl mx-auto" dangerouslySetInnerHTML={{ __html: cleanHtml(section.body) }} />}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16">
+                    <div className="space-y-5 sm:space-y-6 order-1 lg:order-2">
+                      {hasVisibleFooterEmail && <div className="flex items-start gap-4"><div className="w-12 h-12 sm:w-14 sm:h-14 bg-primary/10 rounded-xl flex items-center justify-center flex-shrink-0"><Mail className="w-5 h-5 sm:w-6 sm:h-6 text-primary" /></div><div><h4 className="font-semibold text-base sm:text-lg">Email</h4><p className="text-muted-foreground text-sm sm:text-base">{footerEmail}</p></div></div>}
+                      {hasVisibleFooterPhone && <div className="flex items-start gap-4"><div className="w-12 h-12 sm:w-14 sm:h-14 bg-primary/10 rounded-xl flex items-center justify-center flex-shrink-0"><Phone className="w-5 h-5 sm:w-6 sm:h-6 text-primary" /></div><div><h4 className="font-semibold text-base sm:text-lg">Phone</h4><p className="text-muted-foreground text-sm sm:text-base">{footerPhone}</p></div></div>}
+                      <div className="flex items-start gap-4"><div className="w-12 h-12 sm:w-14 sm:h-14 bg-primary/10 rounded-xl flex items-center justify-center flex-shrink-0"><MapPin className="w-5 h-5 sm:w-6 sm:h-6 text-primary" /></div><div><h4 className="font-semibold text-base sm:text-lg">Location</h4><p className="text-muted-foreground text-sm sm:text-base">{[footer?.contactInfo?.address, footer?.contactInfo?.city].filter(Boolean).join(', ') || ''}</p></div></div>
+                    </div>
+                    <div className="bg-card border border-border rounded-2xl p-6 sm:p-8 shadow-sm order-2 lg:order-1">
+                      <form className="space-y-5" onSubmit={(e: any) => e.preventDefault()}>
+                        <input placeholder="Your Name *" className="flex h-14 w-full rounded-md border border-input bg-background px-4 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
+                        <input placeholder="Email Address *" type="email" className="flex h-14 w-full rounded-md border border-input bg-background px-4 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
+                        <input placeholder="Subject" className="flex h-14 w-full rounded-md border border-input bg-background px-4 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
+                        <textarea placeholder="Your Message *" className="flex min-h-[160px] w-full rounded-md border border-input bg-background px-4 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none" />
+                        <Button type="submit" className="w-full h-14 text-lg font-semibold rounded-xl" size="lg" style={primaryBtnStyle}>{section.buttonText || 'Send Message'}</Button>
+                      </form>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            );
+
+          case 'stats':
+            return (
+              <section key={index} id={sectionId} className="py-12 sm:py-16 lg:py-20 px-4 sm:px-6 bg-background" style={bgStyle}>
+                <div className="container mx-auto max-w-6xl">
+                  <ScrollReveal animation="blur-in" duration={800}>
+                    {!section.settings?.hideTitle && <h2 className={'text-2xl sm:text-3xl lg:text-4xl font-bold text-center mb-8 sm:mb-12 ' + textClass}>{section.title}</h2>}
+                  </ScrollReveal>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                    {section.items?.map((item: any, i: number) => (
+                      <ScrollReveal key={i} animation="bounce-in" delay={i * 100}>
+                        <div className="text-center p-6 bg-muted/50 rounded-xl">
+                          <div className="text-3xl sm:text-4xl font-bold text-primary mb-2">{item.name || item.title || item.value}</div>
+                          <div className="text-sm text-muted-foreground">{item.description || item.label}</div>
+                        </div>
+                      </ScrollReveal>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            );
+
+          case 'columns':
+            return (
+              <section key={index} id={sectionId} className="py-12 sm:py-16 lg:py-20 px-4 sm:px-6 bg-background" style={bgStyle}>
+                <div className="container mx-auto max-w-6xl">
+                  <ScrollReveal animation="blur-in" duration={800}>
+                    {!section.settings?.hideTitle && <h2 className={'text-2xl sm:text-3xl lg:text-4xl font-bold text-center mb-3 sm:mb-4 ' + textClass}>{section.title}</h2>}
+                    {section.body && <div className={'text-center mb-8 sm:mb-12 max-w-2xl mx-auto text-sm sm:text-base ' + (isImageBg ? 'text-white/80' : 'text-muted-foreground')} dangerouslySetInnerHTML={{ __html: cleanHtml(section.body) }} />}
+                  </ScrollReveal>
+                  <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 lg:gap-8">
+                    {section.items?.map((item: any, i: number) => (
+                      <ScrollReveal key={i} animation="bounce-in" delay={i * 80}>
+                        <div className="text-center">
+                          <div className="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4 text-lg sm:text-xl lg:text-2xl font-bold text-white" style={{ backgroundColor: customColors?.primary || '#8B5CF6' }}>{item.icon || (i + 1)}</div>
+                          <h3 className={'font-semibold text-sm sm:text-base lg:text-lg mb-1 sm:mb-2 ' + textClass}>{item.name}</h3>
+                          <p className={'text-xs sm:text-sm whitespace-pre-line ' + (isImageBg ? 'text-white/80' : 'text-muted-foreground')}>{item.description || ''}</p>
+                        </div>
+                      </ScrollReveal>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            );
+
+          case 'pricing':
+            return (
+              <section key={index} id={sectionId} className="py-12 sm:py-16 lg:py-20 px-4 sm:px-6 bg-background" style={bgStyle}>
+                <div className="container mx-auto max-w-5xl">
+                  <ScrollReveal animation="blur-in" duration={800}>
+                    {!section.settings?.hideTitle && <h2 className={'text-2xl sm:text-3xl lg:text-4xl font-bold text-center mb-8 sm:mb-12 ' + textClass}>{section.title}</h2>}
+                  </ScrollReveal>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                    {section.items?.map((item: any, i: number) => (
+                      <ScrollReveal key={i} animation="flip-up" delay={i * 100}>
+                        <div className={'bg-card border rounded-xl p-4 sm:p-6 text-center h-full ' + (i === 1 ? 'border-primary shadow-lg sm:scale-105' : 'border-border')}>
+                          <h3 className="font-semibold text-lg sm:text-xl mb-2">{item.name}</h3>
+                          <p className="text-2xl sm:text-3xl font-bold text-primary mb-3 sm:mb-4" style={customColors ? { color: customColors.primary } : undefined}>{item.price}</p>
+                          <ul className="space-y-2 mb-4 sm:mb-6 text-left">
+                            {item.features?.map((f: string, j: number) => <li key={j} className="flex items-start gap-2 text-xs sm:text-sm text-muted-foreground"><Check className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" style={customColors ? { color: customColors.primary } : undefined} /><span>{f}</span></li>)}
+                          </ul>
+                          <Button className="w-full min-h-[48px]" variant={i === 1 ? 'default' : 'outline'} style={i === 1 ? primaryBtnStyle : undefined}>Get Started</Button>
+                        </div>
+                      </ScrollReveal>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            );
+
+          case 'events': {
+            const evLayout = section.settings?.layoutVariant === 'events-list' || section.eventsLayout === 'list' ? 'list' : 'grid';
+            return (
+              <section key={index} id={sectionId} className="py-12 sm:py-16 md:py-20 bg-background" style={bgStyle}>
+                <div className="container mx-auto max-w-6xl px-4">
+                  {section.title && !section.settings?.hideTitle && (
+                    <h2 className={'text-2xl sm:text-3xl lg:text-4xl font-bold text-center mb-4 ' + textClass}>{section.title}</h2>
+                  )}
+                  {section.body && (
+                    <p className={'text-base sm:text-lg opacity-80 text-center mb-8 ' + textClass} dangerouslySetInnerHTML={{ __html: cleanHtml(section.body) }} />
+                  )}
+                  <EventsSectionRuntime accountSlug={section.eventsAccountSlug || EVENTS_ACCOUNT_SLUG} limit={section.eventsLimit || 3} layout={evLayout} onNavigate={onNavigate} />
+                </div>
+              </section>
+            );
+          }
+
+          case 'ezforms': {
+            const form = (ezforms || []).find((f: any) => f && f.id === section.formId);
+            return (
+              <section key={index} id={sectionId} className="py-12 sm:py-16 md:py-20 bg-background" style={bgStyle}>
+                <div className="container mx-auto max-w-2xl px-4">
+                  {section.title && !section.settings?.hideTitle && (
+                    <h2 className={'text-2xl sm:text-3xl lg:text-4xl font-bold text-center mb-4 ' + textClass}>{section.title}</h2>
+                  )}
+                  {section.body && (
+                    <p className={'text-base sm:text-lg opacity-80 text-center mb-8 ' + textClass} dangerouslySetInnerHTML={{ __html: cleanHtml(section.body) }} />
+                  )}
+                  {form ? (
+                    <EzFormsEmbedRuntime form={{ ...form, name: '', description: '' }} primaryBtnStyle={primaryBtnStyle} />
+                  ) : (
+                    <p className="text-center text-muted-foreground py-8">Form unavailable.</p>
+                  )}
+                </div>
+              </section>
+            );
+          }
+
+          case 'blank':
+          case 'welcome':
+            return (
+              <section key={index} id={sectionId} className="py-12 sm:py-16 lg:py-20 px-4 sm:px-6 bg-background" style={bgStyle}>
+                <div className={'container mx-auto max-w-4xl ' + (section.settings?.fullWidth ? 'max-w-none' : '')}>
+                  {section.image && (
+                    <ScrollReveal animation="fade-up" delay={100}><div className="mb-8"><img src={section.image} alt={section.title || 'Section image'} className="rounded-xl shadow-lg w-full h-auto object-cover" /></div></ScrollReveal>
+                  )}
+                  {(section.title || section.body) && (
+                    <ScrollReveal animation="fade-up" delay={200}>
+                      <div className={(() => { const a = section.settings?.textAlign || 'left'; return a === 'center' ? 'text-center' : a === 'right' ? 'text-right' : 'text-left'; })()}>
+                        {section.title && !section.settings?.hideTitle && <h2 className={'text-2xl sm:text-3xl lg:text-4xl font-bold mb-4 sm:mb-6 ' + textClass}>{section.title}</h2>}
+                        {section.body && <div className={'text-base sm:text-lg leading-relaxed ' + (isImageBg ? 'text-white/90' : 'text-muted-foreground') + ' prose prose-lg max-w-none'} dangerouslySetInnerHTML={{ __html: cleanHtml(section.body) }} />}
+                        {(section.buttonText || section.ctaText) && (() => { const btnLink = section.buttonLink || section.ctaLink || '#'; const isExt = btnLink.startsWith('http'); return (<a href={btnLink} target={isExt ? '_blank' : undefined} rel={isExt ? 'noopener noreferrer' : undefined}><Button size="lg" style={primaryBtnStyle} className="mt-6">{section.buttonText || section.ctaText}</Button></a>); })()}
+                      </div>
+                    </ScrollReveal>
+                  )}
+                </div>
+              </section>
+            );
+
+          case 'map': {
+            const mapAddress = section.mapAddress || '';
+            const encodedMapAddress = encodeURIComponent(mapAddress);
+            const hasMapAddress = !!mapAddress.trim();
+            return (
+              <section key={index} id={sectionId} className="py-16 sm:py-20 lg:py-28 px-4 sm:px-6 bg-background" style={bgStyle}>
+                <div className="container mx-auto max-w-5xl">
+                  <ScrollReveal animation="blur-in" duration={800}>
+                    {!section.settings?.hideTitle && <h2 className={'text-2xl sm:text-3xl lg:text-4xl font-bold text-center mb-4 sm:mb-6 ' + textClass}>{section.title}</h2>}
+                  </ScrollReveal>
+                  <ScrollReveal animation="fade-up" delay={150}>
+                    {hasMapAddress ? (
+                      <div className="aspect-video rounded-2xl overflow-hidden shadow-xl">
+                        <iframe src={'https://maps.google.com/maps?q=' + encodedMapAddress + '&t=m&z=15&ie=UTF8&iwloc=&output=embed'} width="100%" height="100%" style={{ border: 0 }} allowFullScreen loading="lazy" title="Location Map" />
+                      </div>
+                    ) : (
+                      <div className="aspect-video rounded-2xl bg-muted flex items-center justify-center"><div className="text-center"><MapPin className="h-12 w-12 text-muted-foreground mx-auto mb-3" /><p className="text-muted-foreground">Location not set</p></div></div>
+                    )}
+                  </ScrollReveal>
+                </div>
+              </section>
+            );
+          }
+
+          case 'tab-layout': {
+            const tabs = section.tabs || section.items || [];
+            const orientation = section.orientation || 'horizontal';
+            const [activeTab, setActiveTab] = useState(0);
+            return (
+              <section key={index} id={sectionId} className="py-12 sm:py-16 lg:py-20 px-4 sm:px-6 bg-background" style={bgStyle}>
+                <div className="container mx-auto max-w-5xl">
+                  {!section.settings?.hideTitle && <h2 className={'text-2xl sm:text-3xl lg:text-4xl font-bold text-center mb-8 sm:mb-12 ' + textClass}>{section.title}</h2>}
+                  <div className={cn('flex gap-6', orientation === 'vertical' ? 'flex-row' : 'flex-col')}>
+                    <div className={cn('flex gap-1 p-1 bg-muted rounded-lg', orientation === 'vertical' ? 'flex-col min-w-[200px]' : 'flex-row overflow-x-auto')}>
+                      {tabs.map((tab: any, ti: number) => (
+                        <button key={ti} onClick={() => setActiveTab(ti)}
+                          className={cn('px-4 py-2.5 text-sm font-medium rounded-md whitespace-nowrap transition-all',
+                            activeTab === ti ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
+                          )}>
+                          {tab.icon && <DynamicIcon name={tab.icon} className="w-4 h-4 inline mr-2" />}
+                          {tab.label || tab.name || tab.title}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex-1 mt-2">
+                      {tabs[activeTab] && (
+                        <div className="p-4 sm:p-6 bg-card border border-border rounded-xl">
+                          {tabs[activeTab].title && <h3 className="text-xl font-semibold mb-3">{tabs[activeTab].title}</h3>}
+                          {(tabs[activeTab].body || tabs[activeTab].content || tabs[activeTab].description) && <div className="text-muted-foreground prose max-w-none" dangerouslySetInnerHTML={{ __html: cleanHtml(tabs[activeTab].body || tabs[activeTab].content || tabs[activeTab].description) }} />}
+                          {tabs[activeTab].image && <img src={tabs[activeTab].image} alt={tabs[activeTab].title || ''} className="rounded-lg mt-4 w-full object-cover" />}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </section>
+            );
+          }
+
+          case 'video': {
+            const videoUrl = section.videoUrl || section.body || '';
+            const getEmbedUrl = (url: string) => { if (!url) return ''; const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([\w-]+)/); if (ytMatch) return 'https://www.youtube.com/embed/' + ytMatch[1]; const vimeoMatch = url.match(/vimeo\.com\/(?:video\/)?(\d+)/); if (vimeoMatch) return 'https://player.vimeo.com/video/' + vimeoMatch[1]; return url; };
+            return (
+              <section key={index} id={sectionId} className="py-12 sm:py-16 px-4 sm:px-6 bg-background" style={bgStyle}>
+                <div className="container mx-auto max-w-4xl">
+                  {!section.settings?.hideTitle && section.title && <ScrollReveal animation="blur-in"><h2 className={'text-2xl sm:text-3xl lg:text-4xl font-bold text-center mb-8 sm:mb-12 ' + textClass}>{section.title}</h2></ScrollReveal>}
+                  {videoUrl && <ScrollReveal animation="fade-up" delay={150}><div className="aspect-video rounded-2xl overflow-hidden shadow-xl"><iframe src={getEmbedUrl(videoUrl)} width="100%" height="100%" allowFullScreen style={{ border: 0 }} loading="lazy" /></div></ScrollReveal>}
+                </div>
+              </section>
+            );
+          }
+
+          default: {
+            if (!section.title && !section.body && !section.image) return null;
+            return (
+              <section key={index} id={sectionId} className="py-12 sm:py-16 px-4 sm:px-6 bg-background" style={bgStyle}>
+                <div className="container mx-auto max-w-4xl">
+                  {section.title && !section.settings?.hideTitle && <ScrollReveal animation="blur-in"><h2 className={'text-2xl sm:text-3xl lg:text-4xl font-bold mb-4 sm:mb-6 ' + (section.settings?.textAlign === 'center' ? 'text-center ' : section.settings?.textAlign === 'right' ? 'text-right ' : 'text-left ') + textClass}>{section.title}</h2></ScrollReveal>}
+                  {section.body && <ScrollReveal animation="fade-up" delay={100}><div className={'text-base sm:text-lg leading-relaxed ' + (section.settings?.textAlign === 'center' ? 'text-center ' : section.settings?.textAlign === 'right' ? 'text-right ' : 'text-left ') + (isImageBg ? 'text-white/90' : 'text-muted-foreground') + ' prose prose-lg max-w-none'} dangerouslySetInnerHTML={{ __html: cleanHtml(section.body) }} /></ScrollReveal>}
+                  {(section.buttonText || section.ctaText) && <ScrollReveal animation="fade-up" delay={150}>{(() => { const btnLink = section.buttonLink || section.ctaLink || '#'; const isExt = btnLink.startsWith('http'); return (<a href={btnLink} target={isExt ? '_blank' : undefined} rel={isExt ? 'noopener noreferrer' : undefined}><Button size="lg" style={primaryBtnStyle} className="mt-6">{section.buttonText || section.ctaText}</Button></a>); })()}</ScrollReveal>}
+                  {section.image && <ScrollReveal animation="fade-up" delay={200}><div className="mt-8"><img src={section.image} alt={section.title || ''} className="rounded-xl shadow-lg w-full h-auto object-cover" /></div></ScrollReveal>}
+                </div>
+              </section>
+            );
+          }
+        }
+        return null;
+      }).map((el: any, index: number) => {
+        if (!el) return null;
+        const section = activeSections[index];
+        const ro = section?.settings?.responsiveOverrides;
+        if (!ro) return el;
+        const scope = 'section-font-' + index;
+        const rules: string[] = [];
+        if (ro.desktop?.headingFontSize) rules.push('@media (min-width: 1024px) { .' + scope + ' h1, .' + scope + ' h2, .' + scope + ' h3 { font-size: ' + ro.desktop.headingFontSize + ' !important; } }');
+        if (ro.desktop?.bodyFontSize) rules.push('@media (min-width: 1024px) { .' + scope + ' p, .' + scope + ' li, .' + scope + ' span { font-size: ' + ro.desktop.bodyFontSize + ' !important; } }');
+        if (ro.desktop?.maxWidth) rules.push('@media (min-width: 1024px) { .' + scope + ' .container { max-width: ' + ro.desktop.maxWidth + ' !important; } }');
+        if (ro.desktop?.gap) rules.push('@media (min-width: 1024px) { .' + scope + ' .grid, .' + scope + ' .flex { gap: ' + ro.desktop.gap + ' !important; } }');
+        if (ro.tablet?.headingFontSize) rules.push('@media (min-width: 768px) and (max-width: 1023px) { .' + scope + ' h1, .' + scope + ' h2, .' + scope + ' h3 { font-size: ' + ro.tablet.headingFontSize + ' !important; } }');
+        if (ro.tablet?.bodyFontSize) rules.push('@media (min-width: 768px) and (max-width: 1023px) { .' + scope + ' p, .' + scope + ' li, .' + scope + ' span { font-size: ' + ro.tablet.bodyFontSize + ' !important; } }');
+        if (ro.tablet?.maxWidth) rules.push('@media (min-width: 768px) and (max-width: 1023px) { .' + scope + ' .container { max-width: ' + ro.tablet.maxWidth + ' !important; } }');
+        if (ro.tablet?.gap) rules.push('@media (min-width: 768px) and (max-width: 1023px) { .' + scope + ' .grid, .' + scope + ' .flex { gap: ' + ro.tablet.gap + ' !important; } }');
+        if (ro.mobile?.headingFontSize) rules.push('@media (max-width: 767px) { .' + scope + ' h1, .' + scope + ' h2, .' + scope + ' h3 { font-size: ' + ro.mobile.headingFontSize + ' !important; } }');
+        if (ro.mobile?.bodyFontSize) rules.push('@media (max-width: 767px) { .' + scope + ' p, .' + scope + ' li, .' + scope + ' span { font-size: ' + ro.mobile.bodyFontSize + ' !important; } }');
+        if (ro.mobile?.maxWidth) rules.push('@media (max-width: 767px) { .' + scope + ' .container { max-width: ' + ro.mobile.maxWidth + ' !important; } }');
+        if (ro.mobile?.gap) rules.push('@media (max-width: 767px) { .' + scope + ' .grid, .' + scope + ' .flex { gap: ' + ro.mobile.gap + ' !important; } }');
+        const wrapClasses: string[] = [scope];
+        if (ro.mobile?.hidden) wrapClasses.push('max-md:hidden');
+        if (ro.tablet?.hidden) wrapClasses.push('md:max-lg:hidden');
+        if (ro.desktop?.hidden) wrapClasses.push('lg:hidden');
+        if (ro.mobile?.textAlign === 'center') wrapClasses.push('max-md:text-center');
+        else if (ro.mobile?.textAlign === 'right') wrapClasses.push('max-md:text-right');
+        else if (ro.mobile?.textAlign === 'left') wrapClasses.push('max-md:text-left');
+        if (ro.tablet?.textAlign === 'center') wrapClasses.push('md:max-lg:text-center');
+        else if (ro.tablet?.textAlign === 'right') wrapClasses.push('md:max-lg:text-right');
+        else if (ro.tablet?.textAlign === 'left') wrapClasses.push('md:max-lg:text-left');
+        if (ro.desktop?.textAlign === 'center') wrapClasses.push('lg:text-center');
+        else if (ro.desktop?.textAlign === 'right') wrapClasses.push('lg:text-right');
+        else if (ro.desktop?.textAlign === 'left') wrapClasses.push('lg:text-left');
+        if (ro.mobile?.stackColumns) wrapClasses.push('max-md:[&_.grid]:grid-cols-1');
+        if (ro.tablet?.stackColumns) wrapClasses.push('md:max-lg:[&_.grid]:grid-cols-1');
+        const wrapClassName = wrapClasses.join(' ');
+        if (rules.length === 0 && wrapClasses.length === 1) return el;
+        return <div key={'font-wrap-' + index} className={wrapClassName}>{rules.length > 0 ? <style dangerouslySetInnerHTML={{ __html: rules.join(' ') }} /> : null}{el}</div>;
+      })}
+
+      {/* EzForms embeds (from enabled site plugins) */}
+      {(ezforms || []).filter((f: any) => f && f.source === 'plugin').map((f: any) => (
+        <EzFormsEmbedRuntime key={f.id} form={f} primaryBtnStyle={primaryBtnStyle} />
+      ))}
+
+      {/* Footer */}
+      <footer className="relative bg-gradient-to-b from-gray-900 to-gray-950 text-white overflow-hidden">
+        <div className="h-1 w-full" style={{ background: customColors?.primary ? 'linear-gradient(90deg, ' + customColors.primary + ', ' + (customColors.accent || customColors.primary) + '80)' : 'linear-gradient(90deg, hsl(var(--primary)), hsl(var(--primary) / 0.5))' }} />
+        <div className="absolute inset-0 opacity-[0.02]" style={{ backgroundImage: 'radial-gradient(circle at 20% 50%, white 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+        <div className="container mx-auto px-4 sm:px-6 relative z-10">
+          <div className="py-12 sm:py-16 lg:py-20">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-8 lg:gap-12">
+              <div className="lg:col-span-4 space-y-5">
+                {(() => {
+                  const fLogo = footer?.logo || header?.logo;
+                  const fHeight = footer?.logoHeight || 56;
+                  const fInvert = footer?.logoInvert !== false;
+                  return fLogo
+                    ? <div className="mb-4"><img src={fLogo} alt={businessName} style={{ height: fHeight + 'px', width: 'auto', objectFit: 'contain' }} className={fInvert ? 'brightness-0 invert' : ''} /></div>
+                    : <h3 className="text-xl sm:text-2xl font-bold">{footer?.companyName || businessName}</h3>;
+                })()}
+                {footer?.description && <p className="text-gray-400 leading-relaxed text-sm sm:text-base max-w-sm">{footer.description}</p>}
+                {footer?.socialLinks && footer.socialLinks.length > 0 && (
+                  <div className="flex gap-3 pt-2">
+                    {footer.socialLinks.map((social: any, i: number) => {
+                      const IconComponent = (() => { switch (social.platform?.toLowerCase()) { case 'facebook': return Facebook; case 'instagram': return Instagram; case 'twitter': return Twitter; case 'linkedin': return Linkedin; case 'youtube': return Youtube; case 'github': return Github; default: return Globe; } })();
+                      return <a key={i} href={social.url} target="_blank" rel="noopener noreferrer" className="w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 hover:scale-110 transition-all duration-200" style={{ backgroundColor: customColors?.primary ? customColors.primary + '20' : undefined }}><IconComponent className="w-5 h-5" /></a>;
+                    })}
+                  </div>
+                )}
+              </div>
+              {(() => {
+                const menuSource = footer?.footerMenuSource;
+                let effectiveLinkGroups = footer?.linkGroups;
+
+                if (menuSource === 'primary' && mergedNav.length > 0) {
+                  const quickLinks: any[] = [];
+                  const groups: any[] = [];
+                  mergedNav.forEach((item: any) => {
+                    if (item.children && item.children.length > 0) {
+                      groups.push({ title: item.label, links: item.children.map((c: any) => ({ label: c.label, href: c.href })) });
+                    } else {
+                      quickLinks.push({ label: item.label, href: item.href });
+                    }
+                  });
+                  if (quickLinks.length > 0) groups.unshift({ title: 'Quick Links', links: quickLinks });
+                  effectiveLinkGroups = groups;
+                } else if (menuSource === 'mega' && footer?.footerMegaMenuId && header?.megaMenuItems?.length) {
+                  const megaItem = (header.megaMenuItems as any[]).find((m: any) => m.id === footer.footerMegaMenuId);
+                  if (megaItem?.type === 'mega-dropdown' && megaItem.columns?.length) {
+                    effectiveLinkGroups = megaItem.columns.map((col: any) => ({ title: col.title || 'Links', links: (col.items || []).map((it: any) => ({ label: it.label, href: it.href })) }));
+                  } else if (megaItem?.type === 'simple-dropdown' && megaItem.children?.length) {
+                    effectiveLinkGroups = [{ title: megaItem.label, links: megaItem.children.map((c: any) => ({ label: c.label, href: c.href })) }];
+                  }
+                }
+
+                return effectiveLinkGroups?.length > 0 ? effectiveLinkGroups.map((group: any, gi: number) => (
+                  <div key={gi} className="lg:col-span-2">
+                    <h4 className="font-semibold text-white mb-4 text-sm uppercase tracking-wider">{group.title}</h4>
+                    <ul className="space-y-3">{(group.links || []).map((link: any, i: number) => <li key={i}><a href={link.href} onClick={(e: any) => handleNavClick(e, link.href)} className="text-gray-400 hover:text-white transition-colors text-sm inline-flex items-center gap-1 group"><ArrowRight className="w-3 h-3 opacity-0 -ml-4 group-hover:opacity-100 group-hover:ml-0 transition-all duration-200" />{link.label}</a></li>)}</ul>
+                  </div>
+                )) : footer?.links?.length > 0 ? (
+                  <div className="lg:col-span-2">
+                    <h4 className="font-semibold text-white mb-4 text-sm uppercase tracking-wider">Quick Links</h4>
+                    <ul className="space-y-3">{footer.links.map((link: any, i: number) => <li key={i}><a href={link.href} onClick={(e: any) => handleNavClick(e, link.href)} className="text-gray-400 hover:text-white transition-colors text-sm inline-flex items-center gap-1 group"><ArrowRight className="w-3 h-3 opacity-0 -ml-4 group-hover:opacity-100 group-hover:ml-0 transition-all duration-200" />{link.label}</a></li>)}</ul>
+                  </div>
+                ) : null;
+              })()}
+              <div className="lg:col-span-4">
+                <h4 className="font-semibold text-white mb-4 text-sm uppercase tracking-wider">{footer?.contactSectionTitle || 'Get In Touch'}</h4>
+                <div className="space-y-4">
+                  {hasVisibleFooterEmail && <a href={'mailto:' + footerEmail} className="flex items-start gap-3 text-gray-400 hover:text-white transition-colors group">
+                     <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors" style={{ backgroundColor: customColors?.primary ? customColors.primary + '20' : 'rgba(255,255,255,0.1)' }}><Mail className="w-4 h-4" /></div>
+                     <div><p className="text-xs text-gray-500 mb-0.5">Email Us</p><p className="text-sm group-hover:text-white transition-colors">{footerEmail}</p></div>
+                   </a>}
+                   {hasVisibleFooterPhone && <a href={'tel:' + footerPhone.replace(/[^0-9+]/g, '')} className="flex items-start gap-3 text-gray-400 hover:text-white transition-colors group">
+                     <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors" style={{ backgroundColor: customColors?.primary ? customColors.primary + '20' : 'rgba(255,255,255,0.1)' }}><Phone className="w-4 h-4" /></div>
+                     <div><p className="text-xs text-gray-500 mb-0.5">Call Us</p><p className="text-sm group-hover:text-white transition-colors">{footerPhone}</p></div>
+                   </a>}
+                  {(footer?.contactInfo?.address || footer?.contactInfo?.city) && (
+                    <div className="flex items-start gap-3 text-gray-400">
+                      <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ backgroundColor: customColors?.primary ? customColors.primary + '20' : 'rgba(255,255,255,0.1)' }}><MapPin className="w-4 h-4" /></div>
+                      <div><p className="text-xs text-gray-500 mb-0.5">Visit Us</p><p className="text-sm">{footer?.contactInfo?.address && <span className="block">{footer.contactInfo.address}</span>}{footer?.contactInfo?.city && <span>{footer.contactInfo.city}</span>}</p></div>
+                    </div>
+                  )}
+                  {footer?.businessHours && (footer.businessHours.weekdays || footer.businessHours.weekend) && (
+                    <div className="pt-4 mt-4 border-t border-gray-800">
+                      <p className="text-xs text-gray-500 mb-2">Business Hours</p>
+                      {footer.businessHours.weekdays && <p className="text-sm text-gray-400">{footer.businessHours.weekdays}</p>}
+                      {footer.businessHours.weekend && <p className="text-sm text-gray-400">{footer.businessHours.weekend}</p>}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            {footer?.newsletter?.enabled && (
+              <div className="mt-12 pt-10 border-t border-gray-800">
+                <div className="max-w-xl mx-auto text-center">
+                  <h4 className="text-lg sm:text-xl font-semibold mb-2">{footer.newsletter.title || 'Stay Updated'}</h4>
+                  <p className="text-gray-400 text-sm mb-5">Subscribe to our newsletter for the latest updates and exclusive offers.</p>
+                  <form className="flex flex-col sm:flex-row gap-3" onSubmit={(e: any) => e.preventDefault()}>
+                    <input type="email" placeholder={footer.newsletter.placeholder || "Enter your email"} className="flex-1 h-12 bg-white/10 border border-white/20 text-white placeholder:text-gray-400 focus:border-white/40 rounded-md px-4" />
+                    <button type="submit" className="h-12 px-8 font-semibold rounded-md text-white" style={{ backgroundColor: customColors?.primary }}>{footer.newsletter.buttonText || 'Subscribe'}</button>
+                  </form>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="border-t border-gray-800 py-6">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              <p className="text-sm text-gray-500 text-center sm:text-left">{footer?.copyright || ('© ' + new Date().getFullYear() + ' ' + businessName + '. All rights reserved.')}</p>
+              <div className="flex items-center gap-6 text-xs text-gray-500">
+                <FooterVisitorCounter textColor="#9ca3af" />
+                <a href="/privacy" className="hover:text-gray-400 transition-colors">Privacy Policy</a>
+                <a href="/terms" className="hover:text-gray-400 transition-colors">Terms of Service</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}
