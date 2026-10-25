@@ -177,7 +177,7 @@
     },
     "navItems": [
       {
-        "href": "/events/icpf-a57643/ICPF Oklahoma AWAKE Camp",
+        "href": "/events/icpf-a57643/icpf-oklahoma-camp-2027",
         "type": "events",
         "label": "Registration"
       }
@@ -351,7 +351,7 @@
     }
   ],
   "landingRedirect": {
-    "target": "/events/icpf-a57643/ICPF Oklahoma AWAKE Camp",
+    "target": "/events/icpf-a57643/icpf-oklahoma-camp-2027",
     "enabled": true
   }
 }
