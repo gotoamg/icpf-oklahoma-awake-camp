@@ -2,17 +2,10 @@
 
 Igniting Christian youth across America to live boldly for Christ.
 
-## Development
+## Live Site
 
-```bash
-npm install
-npm run dev
-```
+🌐 https://gotoamg.github.io/icpf-oklahoma-awake-camp/
 
-## Build & Deploy
+## Last Updated
 
-```bash
-npm run build
-```
-
-Deploy the `dist` folder to Vercel, Netlify, or any static host.
+2026-10-25T05:08:45.968Z
